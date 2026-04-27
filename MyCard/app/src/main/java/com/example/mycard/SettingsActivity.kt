@@ -72,7 +72,7 @@ fun SettingsScreen(onSave: () -> Unit, onCancel: () -> Unit) {
                 .padding(16.dp)
         ) {
             Text(
-                text = "카드그룹 (쉼표로 구분)",
+                text = "카드그룹 (한 줄에 하나, 쉼표 구분: 발신번호,그룹ID[,카드끝4자리])",
                 style = MaterialTheme.typography.titleMedium
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -82,7 +82,7 @@ fun SettingsScreen(onSave: () -> Unit, onCancel: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(120.dp),
-                placeholder = { Text("예: 스타벅스\n쿠팡\n네이버") }
+                placeholder = { Text("예:\n18001111,하나,1234\n18001111,하나,5678\n15776000,현대,9012") }
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(

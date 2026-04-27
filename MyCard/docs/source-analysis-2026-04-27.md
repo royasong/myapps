@@ -38,11 +38,12 @@ MyCard/
 │       │   │   ├── MainActivity.kt
 │       │   │   ├── SettingsActivity.kt
 │       │   │   ├── CardRefreshWorker.kt
+│       │   │   ├── sms/
+│       │   │   │   └── SMSReader.java
 │       │   │   ├── ui/theme/
 │       │   │   │   ├── Color.kt
 │       │   │   │   ├── Theme.kt
-│       │   │   │   ├── Type.kt
-│       │   │   │   └── SMSReader.java     ← 위치는 ui/theme이지만 UI 아님
+│       │   │   │   └── Type.kt
 │       │   │   └── widget/
 │       │   │       └── CardWidgetProvider.kt
 │       │   └── res/
@@ -74,7 +75,7 @@ MyCard/
 
 ### 5.1 `SMSReader.java` — 파싱 코어
 
-**위치 주의**: `com.example.mycard.ui.theme.SMSReader`. 패키지가 `ui.theme`이지만 UI/테마와 무관. 역사적인 오배치.
+위치: `com.example.mycard.sms.SMSReader` (2026-04-27 `ui.theme` 패키지에서 이관).
 
 핵심 API:
 ```java
@@ -210,7 +211,6 @@ placeholder는 "예: 스타벅스 / 쿠팡 / 네이버"로 돼있어 **포맷이
 ### 코드 스멜
 - 위젯 prefs 갱신 + notify 블록이 4회 복붙(추출 필요).
 - `parseGroupsJson` regex 파서 — Gson 있는 마당에 굳이.
-- `SMSReader.java`가 `ui/theme/` 패키지에 있음.
 - `MainActivity.kt`에 `WorkManager` 관련 import만 있고 사용처 0.
 - `widget_item.xml`이 어디서도 사용되지 않음(잠재 dead resource).
 - 한국어 주석에 `위젯` 오타 `위젷`이 반복(파일·라인 다수).
@@ -276,7 +276,7 @@ placeholder는 "예: 스타벅스 / 쿠팡 / 네이버"로 돼있어 **포맷이
 4. `CardWidgetProvider.onReceive`와 `MainActivity`의 권한 미부여 케이스에 빈 결과 기록을 막는 가드(권한 없으면 prefs를 건드리지 않음).
 5. `SettingsActivity` placeholder를 실제 포맷(`010-1234-5678,스벅`)으로 교정.
 6. 미사용 코드 제거 또는 활성화: `refreshData`, `findCardIdByPhone`/`findCardGroup`, `MainActivity`의 WorkManager import, `widget_item.xml`, `MainActivity`의 `shouldRefresh` 인텐트 경로.
-7. `SMSReader.java`를 `com.example.mycard.sms` 같은 적절한 패키지로 이동(독립 task).
+7. ~~`SMSReader.java`를 `com.example.mycard.sms` 같은 적절한 패키지로 이동~~ — **2026-04-27 완료** (`com.example.mycard.sms.SMSReader`).
 
 ---
 
