@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import com.example.mycard.ui.theme.MyCardTheme
-import com.example.mycard.ui.theme.SMSReader
+import com.example.mycard.sms.SMSReader
 import com.example.mycard.SettingsActivity
 import com.example.mycard.widget.CardWidgetProvider
 import android.os.Environment
@@ -73,7 +73,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+
+        // Phase 0: RCS / MaaP 접근 가능성 probe. 결과는 logcat -s SACH 로 확인.
+        SMSReader.probeRcsAccess(this)
+
         // 위젯에서 새로고침 요청 여부 확인
         val shouldRefresh = intent.getBooleanExtra("refresh", false)
         
@@ -205,7 +208,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                             
                             // 위젷 업데이트
                             val grandTotal = groups.sumOf { it.totalAmount }
-                            val prefs = context.getSharedPreferences("l`", Context.MODE_PRIVATE)
+                            val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
                             prefs.edit().putLong("widget_total", grandTotal).apply()
                             
                             val groupsJson = StringBuilder("[")
