@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    android:orientation="vertical"
+    android:id="@+id/activity_setting"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:theme="@style/Theme.AppCompat.DayNight.DarkActionBar"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    tools:context=".EditSmsActivity">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/colorPrimary"
+        android:titleTextColor="@color/colorOnPrimary" />
+    <EditText
+        android:id="@+id/editText_sms0"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="empty" />
+
+    <EditText
+        android:id="@+id/editText_sms1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="empty" />
+
+    <EditText
+        android:id="@+id/editText_sms2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="empty" />
+
+    <EditText
+        android:id="@+id/editText_sms3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="empty" />
+    <Button
+        android:id="@+id/btn_smsApply"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="apply" />
+</LinearLayout>
