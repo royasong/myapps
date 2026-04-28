@@ -41,11 +41,10 @@
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:text="↻"
-            android:textSize="30sp"
+            android:textSize="26sp"
             android:gravity="center"
             android:background="#2196F3"
             android:textColor="@android:color/white"
-
             android:clickable="true"
             android:focusable="true"
             android:foreground="?android:attr/selectableItemBackground" />

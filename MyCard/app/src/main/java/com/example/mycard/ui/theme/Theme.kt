@@ -13,25 +13,29 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = Color(0xFFBBDEFB),
+    secondary = Color(0xFFB0BEC5),
+    tertiary = Color(0xFFB3E5FC)
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFFD84315),
+    primary = Color(0xFF455A64),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFCCBC),
-    onPrimaryContainer = Color(0xFF3E2723),
-    background = Color(0xFFFFFBF0),
-    surface = Color(0xFFFFFBF0),
-    secondary = Color(0xFF795548)
+    primaryContainer = Color(0xFFECEFF1),
+    onPrimaryContainer = Color(0xFF263238),
+    secondary = Color(0xFF607D8B),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFECEFF1),
+    onSecondaryContainer = Color(0xFF263238),
+    background = Color(0xFFFAFAFA),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF212121),
+    onSurfaceVariant = Color(0xFF757575)
 )
 
 @Composable
 fun MyCardTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {

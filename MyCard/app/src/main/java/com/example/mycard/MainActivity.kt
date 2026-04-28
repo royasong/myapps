@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +37,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,7 +73,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
-import androidx.work.WorkerParameters
+import  androidx.work.WorkerParameters
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -197,7 +201,9 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             TopAppBar(
                 title = { Text("이번 달 카드 승인 내역") },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = Color(0xFF90CAF9),
+                    titleContentColor = Color(0xFF0D47A1),
+                    actionIconContentColor = Color(0xFF0D47A1)
                 ),
                 actions = {
                     // 새로고침 버튼
@@ -287,9 +293,10 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primary
+                                containerColor = Color.White
                             ),
-                            elevation = CardDefaults.cardElevation(4.dp)
+                            border = BorderStroke(1.dp, Color(0xFFAAAAAA)),
+                            elevation = CardDefaults.cardElevation(0.dp)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -301,13 +308,13 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                 Text(
                                     text = "이번 달 총 승인",
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onPrimary
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "%,d원".format(grandTotal),
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimary
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
@@ -351,10 +358,11 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer
                                         )
-                                        Text(
-                                            text = if (isExpanded) " ▲" else " ▼",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        Icon(
+                                            imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                            contentDescription = null,
+                                            tint = Color(0xFF90CAF9),
+                                            modifier = Modifier.padding(start = 1.dp).size(20.dp)
                                         )
                                     }
                                 }
@@ -370,6 +378,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .background(Color(0xFFF0F0F0))
                                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
