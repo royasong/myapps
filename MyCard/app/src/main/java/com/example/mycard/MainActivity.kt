@@ -149,8 +149,10 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        val readGranted = results[Manifest.permission.READ_SMS] == true
+    ) { _ ->
+        val readGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.READ_SMS
+        ) == PackageManager.PERMISSION_GRANTED
         permissionGranted = readGranted
         if (readGranted) groups = SMSReader.readCardApprovalGrouped(context)
     }

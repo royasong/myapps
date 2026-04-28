@@ -6,7 +6,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import com.example.mycard.ui.theme.SMSReader
+import com.example.mycard.sms.SMSReader
 import com.example.mycard.widget.CardWidgetProvider
 import kotlin.concurrent.thread
 
