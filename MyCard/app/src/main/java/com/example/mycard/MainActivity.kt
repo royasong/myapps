@@ -199,7 +199,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("이번 달 카드 승인 내역") },
+                title = { Text("이번 달 카드 승인 내역", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFE3F2FD),
                     titleContentColor = Color(0xFF1565C0),
