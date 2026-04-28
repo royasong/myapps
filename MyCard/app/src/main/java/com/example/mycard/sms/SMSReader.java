@@ -133,7 +133,7 @@ public class SMSReader {
         long startTime = cal.getTimeInMillis();
 
         // 쿼리 조건 설정
-        String selection = "address = ? AND date >= ? AND body LIKE '[Web발신]%'";
+        String selection = "address = ? AND date >= ? AND (body LIKE '[Web발신]%' OR body LIKE '네이버 %')";
         SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.KOREA);
         
         for (String group : cardGroups) {
@@ -161,7 +161,10 @@ public class SMSReader {
                                 String body = c.getString(2);
 
                                 // [Web발신] 이후 모든 공백 제거
-                                String trimmedBody = body.replaceFirst("^\\[Web발신\\]\\s*", "").replaceAll("\\s+", "");
+                                String trimmedBody = body
+                                        .replaceFirst("^\\[Web발신\\]\\s*", "")
+                                        .replaceFirst("^네이버\\s+", "")
+                                        .replaceAll("\\s+", "");
                                 
                                 if(!trimmedBody.contains(configId.trim())) continue;
 
@@ -255,35 +258,54 @@ public class SMSReader {
 
                 if (!cardLast4.isEmpty()) {
                     String cardField = findValueAfterLabel(texts, "카드");
-                    if (!maskedCardLast4Matches(cardField, cardLast4)) continue;
+                    String haystack = !cardField.isEmpty() ? cardField : concat;
+                    if (!maskedCardLast4Matches(haystack, cardLast4)) continue;
                 }
 
-                Long amount = findAmountAfterLabel(texts, "금액");
-                if (amount == null) continue;
+                Long labelAmount = findAmountAfterLabel(texts, "금액");
+                long finalAmount;
+                String displayBody;
 
-                String merchant = findValueAfterLabel(texts, "사용처");
-                String txTime = findValueAfterLabel(texts, "거래시간");
-                String cardLabel = findValueAfterLabel(texts, "카드");
-                String txKind = findValueAfterLabel(texts, "거래구분");
-                String accumulated = findValueAfterLabel(texts, "누적금액");
+                if (labelAmount != null) {
+                    String merchant = findValueAfterLabel(texts, "사용처");
+                    String txTime = findValueAfterLabel(texts, "거래시간");
+                    String cardLabel = findValueAfterLabel(texts, "카드");
+                    String txKind = findValueAfterLabel(texts, "거래구분");
+                    String accumulated = findValueAfterLabel(texts, "누적금액");
 
-                StringBuilder sb = new StringBuilder("[Web발신] ");
-                if (!cardLabel.isEmpty()) sb.append(cardLabel).append(' ');
-                sb.append("승인 ");
-                if (!txKind.isEmpty()) sb.append(txKind).append(' ');
-                sb.append(String.format(Locale.KOREA, "%,d", amount)).append("원");
-                if (!txTime.isEmpty()) sb.append(' ').append(txTime);
-                if (!merchant.isEmpty()) sb.append(' ').append(merchant);
-                if (!accumulated.isEmpty()) sb.append(" 누적 ").append(accumulated);
-                String displayBody = sb.toString();
+                    StringBuilder sb = new StringBuilder("[Web발신] ");
+                    if (!cardLabel.isEmpty()) sb.append(cardLabel).append(' ');
+                    sb.append("승인 ");
+                    if (!txKind.isEmpty()) sb.append(txKind).append(' ');
+                    sb.append(String.format(Locale.KOREA, "%,d", labelAmount)).append("원");
+                    if (!txTime.isEmpty()) sb.append(' ').append(txTime);
+                    if (!merchant.isEmpty()) sb.append(' ').append(merchant);
+                    if (!accumulated.isEmpty()) sb.append(" 누적 ").append(accumulated);
+                    displayBody = sb.toString();
+                    finalAmount = labelAmount;
+                } else {
+                    boolean concatHasCancel = concat.contains("취소");
+                    String processedConcat = concat.replace("자동결제", "승인").replace("자동 결제", "승인");
+                    Pattern p = concatHasCancel ? CANCEL_AMOUNT_PATTERN : AMOUNT_PATTERN;
+                    Matcher m = p.matcher(processedConcat);
+                    if (!m.find()) continue;
+                    long parsed;
+                    try {
+                        parsed = Long.parseLong(m.group(1).replace(",", ""));
+                    } catch (NumberFormatException e) {
+                        continue;
+                    }
+                    finalAmount = concatHasCancel ? -parsed : parsed;
+                    displayBody = !texts.isEmpty() ? "[Web발신] " + texts.get(0) : concat;
+                }
 
                 String date = fmt.format(new Date(timeStamp));
-                SmsItem item = new SmsItem(address, date, displayBody, amount);
+                SmsItem item = new SmsItem(address, date, displayBody, finalAmount);
 
                 String key = groupKeyFor(configId, cardLast4);
 
                 Log.i("SACH", "RCS approval: key=" + key
-                        + " amount=" + amount
+                        + " amount=" + finalAmount
                         + " merchant=" + findValueAfterLabel(texts, "사용처")
                         + " time=" + findValueAfterLabel(texts, "거래시간"));
 
