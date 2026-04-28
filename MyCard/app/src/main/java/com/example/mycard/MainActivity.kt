@@ -1,7 +1,10 @@
 package com.example.mycard
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -42,6 +45,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -125,22 +129,44 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         }
     }
 
+    // SMS 수신 시 앱이 열려있으면 UI 자동 갱신
+    DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    groups = SMSReader.readCardApprovalGrouped(context)
+                }
+            }
+        }
+        val filter = IntentFilter(SmsReceiver.ACTION_SMS_UPDATED)
+        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        onDispose {
+            context.unregisterReceiver(receiver)
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        permissionGranted = isGranted
-        if (isGranted) groups = SMSReader.readCardApprovalGrouped(context)
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val readGranted = results[Manifest.permission.READ_SMS] == true
+        permissionGranted = readGranted
+        if (readGranted) groups = SMSReader.readCardApprovalGrouped(context)
     }
 
     LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
+        val readGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+        val receiveGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+        if (readGranted) {
             permissionGranted = true
             groups = SMSReader.readCardApprovalGrouped(context)
-        } else {
-            permissionLauncher.launch(Manifest.permission.READ_SMS)
         }
+        val missing = buildList {
+            if (!readGranted) add(Manifest.permission.READ_SMS)
+            if (!receiveGranted) add(Manifest.permission.RECEIVE_SMS)
+        }
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
     }
 
     // 총액이 변경되면 위젷 업데이트
@@ -148,10 +174,8 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         val grandTotal = groups.sumOf { it.totalAmount }
         val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
 
-        // 총액 저장
         prefs.edit().putLong("widget_total", grandTotal).apply()
 
-        // 그룹별 데이터 JSON으로 저장
         val groupsJson = StringBuilder("[")
         groups.forEachIndexed { index, group ->
             groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
@@ -160,11 +184,12 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         groupsJson.append("]")
         prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
 
-        // 위젷 업데이트 요청
         val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
         val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
         val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
-        appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_total)
+        for (widgetId in widgetIds) {
+            CardWidgetProvider.updateAppWidget(context, appWidgetManager, widgetId)
+        }
     }
 
     // 데이터 새로고침 함수
@@ -173,12 +198,11 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             == PackageManager.PERMISSION_GRANTED
         ) {
             groups = SMSReader.readCardApprovalGrouped(context)
-            
-            // 위젷 업데이트
+
             val grandTotal = groups.sumOf { it.totalAmount }
             val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
             prefs.edit().putLong("widget_total", grandTotal).apply()
-            
+
             val groupsJson = StringBuilder("[")
             groups.forEachIndexed { index, group ->
                 groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
@@ -186,13 +210,15 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             }
             groupsJson.append("]")
             prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
-            
+
             val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
             val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
             val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
-            appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_total)
+            for (widgetId in widgetIds) {
+                CardWidgetProvider.updateAppWidget(context, appWidgetManager, widgetId)
+            }
         } else {
-            permissionLauncher.launch(Manifest.permission.READ_SMS)
+            permissionLauncher.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
         }
     }
 
@@ -207,31 +233,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                 ),
                 actions = {
                     // 새로고침 버튼
-                    IconButton(onClick = {
-                        if (permissionGranted) {
-                            groups = SMSReader.readCardApprovalGrouped(context)
-                            
-                            // 위젷 업데이트
-                            val grandTotal = groups.sumOf { it.totalAmount }
-                            val prefs = context.getSharedPreferences("l`", Context.MODE_PRIVATE)
-                            prefs.edit().putLong("widget_total", grandTotal).apply()
-                            
-                            val groupsJson = StringBuilder("[")
-                            groups.forEachIndexed { index, group ->
-                                groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
-                                if (index < groups.size - 1) groupsJson.append(",")
-                            }
-                            groupsJson.append("]")
-                            prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
-                            
-                            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                            val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
-                            val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
-                            appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_total)
-                        } else {
-                            permissionLauncher.launch(Manifest.permission.READ_SMS)
-                        }
-                    }) {
+                    IconButton(onClick = { refreshData() }) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = "새로고침"
