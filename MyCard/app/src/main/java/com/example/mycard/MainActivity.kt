@@ -1,7 +1,10 @@
-package com.example.mycard
+﻿package com.example.mycard
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -9,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,8 +40,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,7 +58,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.widthIn
 import com.example.mycard.ui.theme.MyCardTheme
 import com.example.mycard.sms.SMSReader
 import com.example.mycard.SettingsActivity
@@ -73,9 +83,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        // Phase 0: RCS / MaaP 접근 가능성 probe. 결과는 logcat -s SACH 로 확인.
-        SMSReader.probeRcsAccess(this)
 
         // 위젯에서 새로고침 요청 여부 확인
         val shouldRefresh = intent.getBooleanExtra("refresh", false)
@@ -122,22 +129,44 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         }
     }
 
+    // SMS 수신 시 앱이 열려있으면 UI 자동 갱신
+    DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    groups = SMSReader.readCardApprovalGrouped(context)
+                }
+            }
+        }
+        val filter = IntentFilter(SmsReceiver.ACTION_SMS_UPDATED)
+        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        onDispose {
+            context.unregisterReceiver(receiver)
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        permissionGranted = isGranted
-        if (isGranted) groups = SMSReader.readCardApprovalGrouped(context)
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val readGranted = results[Manifest.permission.READ_SMS] == true
+        permissionGranted = readGranted
+        if (readGranted) groups = SMSReader.readCardApprovalGrouped(context)
     }
 
     LaunchedEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
+        val readGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+        val receiveGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+        if (readGranted) {
             permissionGranted = true
             groups = SMSReader.readCardApprovalGrouped(context)
-        } else {
-            permissionLauncher.launch(Manifest.permission.READ_SMS)
         }
+        val missing = buildList {
+            if (!readGranted) add(Manifest.permission.READ_SMS)
+            if (!receiveGranted) add(Manifest.permission.RECEIVE_SMS)
+        }
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
     }
 
     // 총액이 변경되면 위젷 업데이트
@@ -145,10 +174,8 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         val grandTotal = groups.sumOf { it.totalAmount }
         val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
 
-        // 총액 저장
         prefs.edit().putLong("widget_total", grandTotal).apply()
 
-        // 그룹별 데이터 JSON으로 저장
         val groupsJson = StringBuilder("[")
         groups.forEachIndexed { index, group ->
             groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
@@ -157,11 +184,12 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         groupsJson.append("]")
         prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
 
-        // 위젷 업데이트 요청
         val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
         val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
         val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
-        appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_total)
+        for (widgetId in widgetIds) {
+            CardWidgetProvider.updateAppWidget(context, appWidgetManager, widgetId)
+        }
     }
 
     // 데이터 새로고침 함수
@@ -171,7 +199,6 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         ) {
             groups = SMSReader.readCardApprovalGrouped(context)
             
-            // 위젷 업데이트
             val grandTotal = groups.sumOf { it.totalAmount }
             val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
             prefs.edit().putLong("widget_total", grandTotal).apply()
@@ -187,46 +214,26 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
             val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
             val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
-            appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_total)
+            for (widgetId in widgetIds) {
+                CardWidgetProvider.updateAppWidget(context, appWidgetManager, widgetId)
+            }
         } else {
-            permissionLauncher.launch(Manifest.permission.READ_SMS)
+            permissionLauncher.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("이번 달 카드 승인 내역") },
+                title = { Text("이번 달 카드 승인 내역", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = Color(0xFFE3F2FD),
+                    titleContentColor = Color(0xFF1565C0),
+                    actionIconContentColor = Color(0xFF1565C0)
                 ),
                 actions = {
                     // 새로고침 버튼
-                    IconButton(onClick = {
-                        if (permissionGranted) {
-                            groups = SMSReader.readCardApprovalGrouped(context)
-                            
-                            // 위젷 업데이트
-                            val grandTotal = groups.sumOf { it.totalAmount }
-                            val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
-                            prefs.edit().putLong("widget_total", grandTotal).apply()
-                            
-                            val groupsJson = StringBuilder("[")
-                            groups.forEachIndexed { index, group ->
-                                groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
-                                if (index < groups.size - 1) groupsJson.append(",")
-                            }
-                            groupsJson.append("]")
-                            prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
-                            
-                            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                            val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
-                            val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
-                            appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_total)
-                        } else {
-                            permissionLauncher.launch(Manifest.permission.READ_SMS)
-                        }
-                    }) {
+                    IconButton(onClick = { refreshData() }) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = "새로고침"
@@ -296,9 +303,10 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primary
+                                containerColor = Color.White
                             ),
-                            elevation = CardDefaults.cardElevation(4.dp)
+                            border = BorderStroke(1.dp, Color(0xFFAAAAAA)),
+                            elevation = CardDefaults.cardElevation(0.dp)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -310,13 +318,13 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                 Text(
                                     text = "이번 달 총 승인",
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onPrimary
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "%,d원".format(grandTotal),
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimary
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
@@ -360,10 +368,11 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer
                                         )
-                                        Text(
-                                            text = if (isExpanded) " ▲" else " ▼",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        Icon(
+                                            imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                            contentDescription = null,
+                                            tint = Color(0xFF90CAF9),
+                                            modifier = Modifier.padding(start = 1.dp).size(20.dp)
                                         )
                                     }
                                 }
@@ -379,17 +388,20 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .background(Color(0xFFF0F0F0))
                                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Column {
+                                            val halfScreenWidth = (LocalConfiguration.current.screenWidthDp / 2).dp
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = item.date,
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(
+                                                    modifier = Modifier.widthIn(max = halfScreenWidth),
                                                     text = item.body.replace("[Web발신]", "").replace("누적.*".toRegex(), "").trim(),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
