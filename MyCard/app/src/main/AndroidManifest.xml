@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:allowBackup="true"
@@ -29,6 +30,21 @@
             android:exported="false"
             android:label="설정"
             android:theme="@style/Theme.MyCard" />
+        <activity
+            android:name=".notif.NotificationListActivity"
+            android:exported="false"
+            android:label="알림 로그"
+            android:theme="@style/Theme.MyCard" />
+
+        <service
+            android:name=".notif.CardNotificationListener"
+            android:exported="true"
+            android:label="MyCard 알림 로그"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name=".widget.CardWidgetProvider"

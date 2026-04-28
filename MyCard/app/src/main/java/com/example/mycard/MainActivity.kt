@@ -248,6 +248,14 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                     context.startActivity(intent)
                                 }
                             )
+                            DropdownMenuItem(
+                                text = { Text("알림 로그") },
+                                onClick = {
+                                    showMenu = false
+                                    val intent = android.content.Intent(context, com.example.mycard.notif.NotificationListActivity::class.java)
+                                    context.startActivity(intent)
+                                }
+                            )
                         }
                     }
                 }

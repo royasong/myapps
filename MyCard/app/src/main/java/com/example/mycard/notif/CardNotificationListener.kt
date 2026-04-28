@@ -1,0 +1,78 @@
+package com.example.mycard.notif
+
+import android.app.Notification
+import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
+import android.util.Log
+import com.example.mycard.notif.db.NotificationDatabase
+import com.example.mycard.notif.db.NotificationEntity
+import com.google.gson.JsonObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
+class CardNotificationListener : NotificationListenerService() {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override fun onNotificationPosted(sbn: StatusBarNotification) {
+        val n = sbn.notification ?: return
+        val pkg = sbn.packageName ?: return
+
+        if (Blacklist.contains(applicationContext, pkg)) return
+
+        val extras = n.extras
+        val rawExtrasJson = RawDump.bundleToJson(extras)
+        val baseEntity = NotificationEntity(
+            ts = sbn.postTime,
+            pkg = pkg,
+            title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty(),
+            text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty(),
+            bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty(),
+            subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString().orEmpty(),
+            category = n.category.orEmpty(),
+            channelId = n.channelId.orEmpty(),
+            rawExtras = rawExtrasJson
+        )
+
+        Log.d(TAG, "posted pkg=$pkg title=${baseEntity.title}")
+
+        val ctx = applicationContext
+        scope.launch {
+            try {
+                val newId = NotificationDatabase.get(ctx).notificationDao().insert(baseEntity)
+                val withId = baseEntity.copy(id = newId)
+                try {
+                    RawDump.appendShared(ctx, buildExternalLine(withId, rawExtrasJson))
+                } catch (e: Exception) {
+                    Log.w(TAG, "raw dump failed", e)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "db insert failed", e)
+            }
+        }
+    }
+
+    override fun onListenerConnected() { Log.i(TAG, "listener connected") }
+    override fun onListenerDisconnected() { Log.i(TAG, "listener disconnected") }
+
+    private fun buildExternalLine(entity: NotificationEntity, rawExtras: String): String {
+        val obj = JsonObject()
+        obj.addProperty("id", entity.id)
+        obj.addProperty("ts", entity.ts)
+        obj.addProperty("pkg", entity.pkg)
+        obj.addProperty("title", entity.title)
+        obj.addProperty("text", entity.text)
+        obj.addProperty("bigText", entity.bigText)
+        obj.addProperty("subText", entity.subText)
+        obj.addProperty("category", entity.category)
+        obj.addProperty("channelId", entity.channelId)
+        obj.addProperty("rawExtras", rawExtras)
+        return obj.toString()
+    }
+
+    companion object {
+        private const val TAG = "CardNotifListener"
+    }
+}
