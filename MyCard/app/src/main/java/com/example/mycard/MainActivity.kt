@@ -50,7 +50,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.widthIn
 import com.example.mycard.ui.theme.MyCardTheme
 import com.example.mycard.ui.theme.SMSReader
 import com.example.mycard.SettingsActivity
@@ -372,13 +374,15 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Column {
+                                            val halfScreenWidth = (LocalConfiguration.current.screenWidthDp / 2).dp
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = item.date,
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(
+                                                    modifier = Modifier.widthIn(max = halfScreenWidth),
                                                     text = item.body.replace("[Web발신]", "").replace("누적.*".toRegex(), "").trim(),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
