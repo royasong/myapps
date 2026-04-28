@@ -5,11 +5,10 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.provider.Telephony
 import com.example.mycard.ui.theme.SMSReader
 import com.example.mycard.widget.CardWidgetProvider
+import kotlin.concurrent.thread
 
 class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -19,9 +18,6 @@ class SmsReceiver : BroadcastReceiver() {
         if (messages.isNullOrEmpty()) return
 
         val senderAddress = messages[0].originatingAddress ?: return
-        val fullBody = messages.joinToString("") { it.messageBody }
-
-        if (!fullBody.contains("[Web발신]")) return
 
         val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
         val cardGroupStr = prefs.getString("cardGroup", "") ?: ""
@@ -36,10 +32,20 @@ class SmsReceiver : BroadcastReceiver() {
 
         if (!isCardSms) return
 
-        // SMS_RECEIVED는 DB 저장 전에 발생하므로 저장 완료 후 재조회
-        Handler(Looper.getMainLooper()).postDelayed({
-            refreshAndNotify(context)
-        }, 2000)
+        val fullBody = messages.joinToString("") { it.messageBody }
+        if (!fullBody.contains("[Web발신]")) return
+        if (!fullBody.contains("승인") && !fullBody.contains("취소")) return
+
+        // goAsync()로 onReceive 종료 후에도 작업 유지, 스레드에서 DB 저장 대기 후 재조회
+        val pending = goAsync()
+        thread {
+            try {
+                Thread.sleep(2000)
+                refreshAndNotify(context)
+            } finally {
+                pending.finish()
+            }
+        }
     }
 
     companion object {
