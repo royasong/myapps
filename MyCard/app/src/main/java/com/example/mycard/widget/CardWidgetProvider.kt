@@ -80,13 +80,25 @@ class CardWidgetProvider : AppWidgetProvider() {
             // 그룹 데이터 파싱
             val groups = parseGroupsJson(groupsJson)
 
+            // 설정 입력 순서로 정렬
+            val cardGroupStr = prefs.getString("cardGroup", "") ?: ""
+            val settingsOrder = cardGroupStr.split("\n")
+                .mapNotNull { line ->
+                    val parts = line.trim().split(",")
+                    if (parts.size >= 2) parts[1].trim() else null
+                }
+            val sortedGroups = if (settingsOrder.isEmpty()) groups else {
+                val orderMap = settingsOrder.withIndex().associate { (i, id) -> id to i }
+                groups.sortedBy { (id, _) -> orderMap[id] ?: Int.MAX_VALUE }
+            }
+
             // 그룹 목록을 텍스트로 표시 (최대 5개)
             val groupsText = StringBuilder()
-            groups.take(5).forEach { (id, amount) ->
+            sortedGroups.take(5).forEach { (id, amount) ->
                 groupsText.append("${id}: %,d원\n".format(amount))
             }
-            if (groups.size > 5) {
-                groupsText.append("... 외 ${groups.size - 5}개")
+            if (sortedGroups.size > 5) {
+                groupsText.append("... 외 ${sortedGroups.size - 5}개")
             }
 
             views.setTextViewText(R.id.widget_groups_text, groupsText.toString())

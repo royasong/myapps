@@ -152,7 +152,24 @@ public class SMSReader {
             }
         }
 
-        return toGroupList(groupMap);
+        List<SmsGroup> result = toGroupList(groupMap);
+
+        // 설정 입력 순서대로 명시적 정렬
+        Map<String, Integer> orderMap = new LinkedHashMap<>();
+        for (int i = 0; i < cardGroups.length; i++) {
+            String t = cardGroups[i].trim();
+            if (!t.isEmpty()) {
+                String[] p = t.split(",");
+                if (p.length >= 2) orderMap.put(p[1].trim(), i);
+            }
+        }
+        result.sort((a, b) ->
+            Integer.compare(
+                orderMap.getOrDefault(a.id, Integer.MAX_VALUE),
+                orderMap.getOrDefault(b.id, Integer.MAX_VALUE)
+            )
+        );
+        return result;
     }
 
     // 설정에서 카드그룹 문자열 가져오기 (전화번호,ID 형식)

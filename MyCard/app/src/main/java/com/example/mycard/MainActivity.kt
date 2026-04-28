@@ -201,9 +201,9 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             TopAppBar(
                 title = { Text("이번 달 카드 승인 내역") },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF90CAF9),
-                    titleContentColor = Color(0xFF0D47A1),
-                    actionIconContentColor = Color(0xFF0D47A1)
+                    containerColor = Color(0xFFE3F2FD),
+                    titleContentColor = Color(0xFF1565C0),
+                    actionIconContentColor = Color(0xFF1565C0)
                 ),
                 actions = {
                     // 새로고침 버튼
