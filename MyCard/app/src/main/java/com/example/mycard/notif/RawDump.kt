@@ -8,10 +8,10 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
-import java.io.BufferedReader
+import com.google.gson.JsonStreamParser
 import java.io.InputStreamReader
 
 object RawDump {
@@ -20,8 +20,12 @@ object RawDump {
     private const val MIME = "application/x-ndjson"
     private const val SUBDIR = "MyCard"
 
+    private val PRETTY_GSON = GsonBuilder().setPrettyPrinting().create()
+
     private val lock = Any()
     @Volatile private var cachedFileUri: Uri? = null
+    @Volatile private var loaded = false
+    private val cache = mutableListOf<JsonObject>()
 
     fun bundleToJson(bundle: Bundle?): String {
         if (bundle == null) return "{}"
@@ -46,30 +50,82 @@ object RawDump {
         return obj.toString()
     }
 
-    fun appendShared(context: Context, line: String) {
+    fun appendObject(context: Context, obj: JsonObject) {
         synchronized(lock) {
-            val uri = ensureFileUri(context)
-            if (uri == null) {
-                Log.w(TAG, "could not resolve share-folder file uri")
-                return
-            }
-            try {
-                writeAppend(context, uri, line)
-            } catch (e: Exception) {
-                Log.w(TAG, "append failed, invalidating cache and retrying", e)
-                cachedFileUri = null
-                val retry = ensureFileUri(context) ?: return
-                try {
-                    writeAppend(context, retry, line)
-                } catch (e2: Exception) {
-                    Log.e(TAG, "append permanently failed", e2)
-                }
-            }
+            ensureLoadedLocked(context)
+            cache.add(obj)
+            writeAllLocked(context)
+        }
+    }
+
+    fun readAllObjects(context: Context): List<JsonObject> {
+        synchronized(lock) {
+            ensureLoadedLocked(context)
+            return cache.toList()
+        }
+    }
+
+    fun removeLinesByPkg(context: Context, targetPkg: String) {
+        synchronized(lock) {
+            ensureLoadedLocked(context)
+            val before = cache.size
+            cache.removeAll { it.get("pkg")?.asString == targetPkg }
+            if (cache.size != before) writeAllLocked(context)
+        }
+    }
+
+    fun removeLineById(context: Context, targetId: Long) {
+        synchronized(lock) {
+            ensureLoadedLocked(context)
+            val before = cache.size
+            cache.removeAll { (it.get("id")?.asLong ?: -1L) == targetId }
+            if (cache.size != before) writeAllLocked(context)
         }
     }
 
     fun sharedPathHint(): String =
         "/sdcard/${Environment.DIRECTORY_DOCUMENTS}/$SUBDIR/$FILE_NAME"
+
+    private fun ensureLoadedLocked(context: Context) {
+        if (loaded) return
+        val uri = ensureFileUri(context) ?: run {
+            loaded = true
+            return
+        }
+        try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                InputStreamReader(stream, Charsets.UTF_8).use { r ->
+                    val parser = JsonStreamParser(r)
+                    while (parser.hasNext()) {
+                        try {
+                            val el = parser.next()
+                            if (el.isJsonObject) cache.add(el.asJsonObject)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "stream parse error, skipping element", e)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "load failed", e)
+        }
+        loaded = true
+    }
+
+    private fun writeAllLocked(context: Context) {
+        val uri = ensureFileUri(context) ?: return
+        try {
+            context.contentResolver.openOutputStream(uri, "wt")?.use { os ->
+                cache.forEach {
+                    os.write(PRETTY_GSON.toJson(it).toByteArray(Charsets.UTF_8))
+                    os.write("\n".toByteArray(Charsets.UTF_8))
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "writeAll failed, invalidating uri", e)
+            cachedFileUri = null
+        }
+    }
 
     private fun ensureFileUri(context: Context): Uri? {
         cachedFileUri?.let { return it }
@@ -83,12 +139,25 @@ object RawDump {
             "${MediaStore.Files.FileColumns.RELATIVE_PATH} = ?"
         val args = arrayOf(FILE_NAME, relativePath)
 
+        var staleId: Long? = null
         resolver.query(collection, projection, selection, args, null)?.use { c ->
             if (c.moveToFirst()) {
                 val id = c.getLong(0)
                 val uri = ContentUris.withAppendedId(collection, id)
-                cachedFileUri = uri
-                return uri
+                if (canOpen(resolver, uri)) {
+                    cachedFileUri = uri
+                    return uri
+                }
+                Log.w(TAG, "stale MediaStore row id=$id, will recreate")
+                staleId = id
+            }
+        }
+
+        staleId?.let { id ->
+            try {
+                resolver.delete(ContentUris.withAppendedId(collection, id), null, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "stale row delete failed (continuing)", e)
             }
         }
 
@@ -96,96 +165,19 @@ object RawDump {
             put(MediaStore.Files.FileColumns.DISPLAY_NAME, FILE_NAME)
             put(MediaStore.Files.FileColumns.MIME_TYPE, MIME)
             put(MediaStore.Files.FileColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.Files.FileColumns.IS_PENDING, 0)
         }
         val newUri = resolver.insert(collection, values)
         cachedFileUri = newUri
         return newUri
     }
 
-    private fun writeAppend(context: Context, uri: Uri, line: String) {
-        context.contentResolver.openOutputStream(uri, "wa")?.use { os ->
-            os.write(line.toByteArray(Charsets.UTF_8))
-            os.write("\n".toByteArray(Charsets.UTF_8))
-        } ?: throw IllegalStateException("openOutputStream returned null for $uri")
-    }
-
-    fun removeLinesByPkg(context: Context, targetPkg: String) {
-        synchronized(lock) {
-            val uri = ensureFileUri(context) ?: return
-            val resolver = context.contentResolver
-            val lines = try {
-                resolver.openInputStream(uri)?.use { stream ->
-                    BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { r ->
-                        r.readLines()
-                    }
-                } ?: return
-            } catch (e: Exception) {
-                Log.w(TAG, "read for pkg-delete failed", e)
-                return
-            }
-
-            val gson = Gson()
-            val kept = lines.filter { line ->
-                if (line.isBlank()) return@filter false
-                try {
-                    val obj = gson.fromJson(line, JsonObject::class.java)
-                    val rowPkg = obj.get("pkg")?.asString.orEmpty()
-                    rowPkg != targetPkg
-                } catch (e: Exception) {
-                    true
-                }
-            }
-
-            try {
-                resolver.openOutputStream(uri, "wt")?.use { os ->
-                    kept.forEach {
-                        os.write(it.toByteArray(Charsets.UTF_8))
-                        os.write("\n".toByteArray(Charsets.UTF_8))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "rewrite for pkg-delete failed", e)
-            }
-        }
-    }
-
-    fun removeLineById(context: Context, targetId: Long) {
-        synchronized(lock) {
-            val uri = ensureFileUri(context) ?: return
-            val resolver = context.contentResolver
-            val lines = try {
-                resolver.openInputStream(uri)?.use { stream ->
-                    BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { r ->
-                        r.readLines()
-                    }
-                } ?: return
-            } catch (e: Exception) {
-                Log.w(TAG, "read for delete failed", e)
-                return
-            }
-
-            val gson = Gson()
-            val kept = lines.filter { line ->
-                if (line.isBlank()) return@filter false
-                try {
-                    val obj = gson.fromJson(line, JsonObject::class.java)
-                    val rowId = obj.get("id")?.asLong ?: -1L
-                    rowId != targetId
-                } catch (e: Exception) {
-                    true
-                }
-            }
-
-            try {
-                resolver.openOutputStream(uri, "wt")?.use { os ->
-                    kept.forEach {
-                        os.write(it.toByteArray(Charsets.UTF_8))
-                        os.write("\n".toByteArray(Charsets.UTF_8))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "rewrite for delete failed", e)
-            }
+    private fun canOpen(resolver: android.content.ContentResolver, uri: Uri): Boolean {
+        return try {
+            resolver.openInputStream(uri)?.close()
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 }

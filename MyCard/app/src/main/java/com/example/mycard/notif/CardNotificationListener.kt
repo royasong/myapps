@@ -6,6 +6,7 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.example.mycard.notif.db.NotificationDatabase
 import com.example.mycard.notif.db.NotificationEntity
+import com.example.mycard.parser.CardParser
 import com.google.gson.JsonObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,8 +20,6 @@ class CardNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val n = sbn.notification ?: return
         val pkg = sbn.packageName ?: return
-
-        if (Blacklist.contains(applicationContext, pkg)) return
 
         val extras = n.extras
         val rawExtrasJson = RawDump.bundleToJson(extras)
@@ -41,10 +40,32 @@ class CardNotificationListener : NotificationListenerService() {
         val ctx = applicationContext
         scope.launch {
             try {
-                val newId = NotificationDatabase.get(ctx).notificationDao().insert(baseEntity)
-                val withId = baseEntity.copy(id = newId)
+                RawDumpAll.appendObject(ctx, buildExternalObject(baseEntity, rawExtrasJson))
+            } catch (e: Exception) {
+                Log.w(TAG, "raw all dump failed", e)
+            }
+
+            if (Blacklist.contains(ctx, pkg)) return@launch
+
+            try {
+                val parsed = if (Whitelist.contains(ctx, pkg)) {
+                    CardParser.parse(ctx, baseEntity)
+                } else null
+
+                val finalEntity = if (parsed != null) {
+                    baseEntity.copy(
+                        amount = parsed.amount,
+                        merchant = parsed.merchant,
+                        parsedAt = System.currentTimeMillis()
+                    )
+                } else {
+                    baseEntity
+                }
+
+                val newId = NotificationDatabase.get(ctx).notificationDao().insert(finalEntity)
+                val withId = finalEntity.copy(id = newId)
                 try {
-                    RawDump.appendShared(ctx, buildExternalLine(withId, rawExtrasJson))
+                    RawDump.appendObject(ctx, buildExternalObject(withId, rawExtrasJson))
                 } catch (e: Exception) {
                     Log.w(TAG, "raw dump failed", e)
                 }
@@ -57,7 +78,7 @@ class CardNotificationListener : NotificationListenerService() {
     override fun onListenerConnected() { Log.i(TAG, "listener connected") }
     override fun onListenerDisconnected() { Log.i(TAG, "listener disconnected") }
 
-    private fun buildExternalLine(entity: NotificationEntity, rawExtras: String): String {
+    private fun buildExternalObject(entity: NotificationEntity, rawExtras: String): JsonObject {
         val obj = JsonObject()
         obj.addProperty("id", entity.id)
         obj.addProperty("ts", entity.ts)
@@ -69,7 +90,7 @@ class CardNotificationListener : NotificationListenerService() {
         obj.addProperty("category", entity.category)
         obj.addProperty("channelId", entity.channelId)
         obj.addProperty("rawExtras", rawExtras)
-        return obj.toString()
+        return obj
     }
 
     companion object {

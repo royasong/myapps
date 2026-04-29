@@ -35,6 +35,11 @@
             android:exported="false"
             android:label="알림 로그"
             android:theme="@style/Theme.MyCard" />
+        <activity
+            android:name=".notif.NotificationBasedCardActivity"
+            android:exported="false"
+            android:label="알림 기반 보기"
+            android:theme="@style/Theme.MyCard" />
 
         <service
             android:name=".notif.CardNotificationListener"
