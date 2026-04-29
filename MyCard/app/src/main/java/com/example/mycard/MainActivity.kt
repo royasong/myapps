@@ -65,33 +65,48 @@ import com.example.mycard.ui.theme.MyCardTheme
 import com.example.mycard.ui.theme.SMSReader
 import com.example.mycard.SettingsActivity
 import com.example.mycard.widget.CardWidgetProvider
-import android.os.Environment
-import androidx.documentfile.provider.DocumentFile
-import java.io.File
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import androidx.work.Worker
-import  androidx.work.WorkerParameters
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+        scheduleDailyRefresh()
+
         // 위젯에서 새로고침 요청 여부 확인
         val shouldRefresh = intent.getBooleanExtra("refresh", false)
-        
+
         setContent {
             MyCardTheme {
                 CardApprovalScreen(shouldRefresh = shouldRefresh)
             }
         }
+    }
+
+    private fun scheduleDailyRefresh() {
+        val now = Calendar.getInstance()
+        val target = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 1)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (!after(now)) add(Calendar.DAY_OF_MONTH, 1)
+        }
+        val initialDelay = target.timeInMillis - now.timeInMillis
+
+        val workRequest = PeriodicWorkRequestBuilder<CardRefreshWorker>(1, TimeUnit.DAYS)
+            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "card_refresh_daily",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            workRequest
+        )
     }
 }
 
@@ -172,9 +187,16 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     // 총액이 변경되면 위젷 업데이트
     LaunchedEffect(groups) {
         val grandTotal = groups.sumOf { it.totalAmount }
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date())
+        val totalCount = groups.sumOf { it.items.size }
+        val todayCount = groups.sumOf { g -> g.items.count { it.date.startsWith(todayStr) } }
         val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
 
-        prefs.edit().putLong("widget_total", grandTotal).apply()
+        prefs.edit()
+            .putLong("widget_total", grandTotal)
+            .putInt("widget_today_count", todayCount)
+            .putInt("widget_total_count", totalCount)
+            .apply()
 
         val groupsJson = StringBuilder("[")
         groups.forEachIndexed { index, group ->
@@ -222,10 +244,18 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         }
     }
 
+    val todayStr = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date()) }
+    val totalCount = groups.sumOf { it.items.size }
+    val todayCount = groups.sumOf { group -> group.items.count { it.date.startsWith(todayStr) } }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("이번 달 카드 승인 내역", fontWeight = FontWeight.Bold) },
+                title = {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("이번 달 카드 내역 ($todayCount/$totalCount)", fontWeight = FontWeight.Bold)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFE3F2FD),
                     titleContentColor = Color(0xFF1565C0),
