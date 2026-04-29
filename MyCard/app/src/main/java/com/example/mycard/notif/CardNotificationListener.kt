@@ -21,8 +21,6 @@ class CardNotificationListener : NotificationListenerService() {
         val n = sbn.notification ?: return
         val pkg = sbn.packageName ?: return
 
-        if (Blacklist.contains(applicationContext, pkg)) return
-
         val extras = n.extras
         val rawExtrasJson = RawDump.bundleToJson(extras)
         val baseEntity = NotificationEntity(
@@ -41,6 +39,14 @@ class CardNotificationListener : NotificationListenerService() {
 
         val ctx = applicationContext
         scope.launch {
+            try {
+                RawDumpAll.appendObject(ctx, buildExternalObject(baseEntity, rawExtrasJson))
+            } catch (e: Exception) {
+                Log.w(TAG, "raw all dump failed", e)
+            }
+
+            if (Blacklist.contains(ctx, pkg)) return@launch
+
             try {
                 val parsed = if (Whitelist.contains(ctx, pkg)) {
                     CardParser.parse(ctx, baseEntity)

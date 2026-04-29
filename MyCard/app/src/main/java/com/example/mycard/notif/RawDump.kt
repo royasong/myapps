@@ -139,12 +139,25 @@ object RawDump {
             "${MediaStore.Files.FileColumns.RELATIVE_PATH} = ?"
         val args = arrayOf(FILE_NAME, relativePath)
 
+        var staleId: Long? = null
         resolver.query(collection, projection, selection, args, null)?.use { c ->
             if (c.moveToFirst()) {
                 val id = c.getLong(0)
                 val uri = ContentUris.withAppendedId(collection, id)
-                cachedFileUri = uri
-                return uri
+                if (canOpen(resolver, uri)) {
+                    cachedFileUri = uri
+                    return uri
+                }
+                Log.w(TAG, "stale MediaStore row id=$id, will recreate")
+                staleId = id
+            }
+        }
+
+        staleId?.let { id ->
+            try {
+                resolver.delete(ContentUris.withAppendedId(collection, id), null, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "stale row delete failed (continuing)", e)
             }
         }
 
@@ -152,9 +165,19 @@ object RawDump {
             put(MediaStore.Files.FileColumns.DISPLAY_NAME, FILE_NAME)
             put(MediaStore.Files.FileColumns.MIME_TYPE, MIME)
             put(MediaStore.Files.FileColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.Files.FileColumns.IS_PENDING, 0)
         }
         val newUri = resolver.insert(collection, values)
         cachedFileUri = newUri
         return newUri
+    }
+
+    private fun canOpen(resolver: android.content.ContentResolver, uri: Uri): Boolean {
+        return try {
+            resolver.openInputStream(uri)?.close()
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 }
