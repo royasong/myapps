@@ -19,28 +19,43 @@ class CardRefreshWorker(
     override suspend fun doWork(): Result {
         return try {
             val context = applicationContext
-            
+
             // SMS 읽기
             val groups = SMSReader.readCardApprovalGrouped(context)
-            
-            // 위젷 데이터 업데이트
+
+            // SharedPreferences 갱신
             val grandTotal = groups.sumOf { it.totalAmount }
-            val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
-            prefs.edit().putLong("widget_total", grandTotal).apply()
-            
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA).format(Date())
+            val totalCount = groups.sumOf { it.items.size }
+            val todayCount = groups.sumOf { g -> g.items.count { it.date.startsWith(todayStr) } }
+
             val groupsJson = StringBuilder("[")
             groups.forEachIndexed { index, group ->
                 groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
                 if (index < groups.size - 1) groupsJson.append(",")
             }
             groupsJson.append("]")
-            prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
-            
-            // 위젷 업데이트 알림
+
+            val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
+            prefs.edit()
+                .putLong("widget_total", grandTotal)
+                .putInt("widget_today_count", todayCount)
+                .putInt("widget_total_count", totalCount)
+                .putString("widget_groups", groupsJson.toString())
+                .apply()
+
+            // 위젯 업데이트
             val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
             val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
             val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
-            appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_total)
+            for (widgetId in widgetIds) {
+                CardWidgetProvider.updateAppWidget(context, appWidgetManager, widgetId)
+            }
+
+            // 앱이 실행 중이면 UI 갱신 요청
+            context.sendBroadcast(
+                android.content.Intent(SmsReceiver.ACTION_SMS_UPDATED).setPackage(context.packageName)
+            )
             
             // 텍스트 파일 저장
             val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.KOREA)
