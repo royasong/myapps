@@ -35,6 +35,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -50,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +67,11 @@ import androidx.compose.foundation.layout.widthIn
 import com.example.mycard.ui.theme.MyCardTheme
 import com.example.mycard.sms.SMSReader
 import com.example.mycard.SettingsActivity
+import com.example.mycard.notif.NotificationBasedCardActivity
+import com.example.mycard.notif.NotificationListActivity
+import com.example.mycard.notif.UpdateAction
 import com.example.mycard.widget.CardWidgetProvider
+import kotlinx.coroutines.launch
 import android.os.Environment
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
@@ -103,6 +110,8 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     var permissionGranted by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var expandedGroups by remember { mutableStateOf(setOf<String>()) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     // 위젯에서 새로고침 요청 시 데이터 갱신
     LaunchedEffect(shouldRefresh) {
@@ -225,6 +234,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("이번 달 카드 승인 내역", fontWeight = FontWeight.Bold) },
@@ -261,7 +271,28 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                 text = { Text("알림 로그") },
                                 onClick = {
                                     showMenu = false
-                                    val intent = android.content.Intent(context, com.example.mycard.notif.NotificationListActivity::class.java)
+                                    val intent = android.content.Intent(context, NotificationListActivity::class.java)
+                                    context.startActivity(intent)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("업데이트") },
+                                onClick = {
+                                    showMenu = false
+                                    coroutineScope.launch {
+                                        val result = UpdateAction.rebuildFromRaw(context)
+                                        snackbarHostState.showSnackbar(
+                                            "재구성 ${result.rebuilt}건 / 파싱 ${result.parsed}건 / " +
+                                                "blacklist ${result.skippedByBlacklist}건 / 파싱실패 ${result.skippedByParseFail}건"
+                                        )
+                                    }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("알림 기반 보기") },
+                                onClick = {
+                                    showMenu = false
+                                    val intent = android.content.Intent(context, NotificationBasedCardActivity::class.java)
                                     context.startActivity(intent)
                                 }
                             )
