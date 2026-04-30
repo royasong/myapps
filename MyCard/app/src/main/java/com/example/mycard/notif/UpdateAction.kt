@@ -22,32 +22,45 @@ object UpdateAction {
     private const val TAG = "UpdateAction"
 
     suspend fun rebuildFromRaw(context: Context): RebuildResult = withContext(Dispatchers.IO) {
+        Log.i(TAG, "rebuildFromRaw: start")
         CardFilterStore.invalidate()
 
         val objects = RawDump.readAllObjects(context)
+        Log.i(TAG, "rebuildFromRaw: loaded ${objects.size} raw objects")
         if (objects.isEmpty()) {
+            Log.w(TAG, "rebuildFromRaw: no raw objects, returning empty result")
             return@withContext RebuildResult(0, 0, 0, 0)
         }
 
         val dao = NotificationDatabase.get(context).notificationDao()
         dao.clear()
+        Log.d(TAG, "rebuildFromRaw: db cleared")
 
         var rebuilt = 0
         var parsed = 0
         var skippedByBlacklist = 0
         var skippedByParseFail = 0
 
-        for (obj in objects) {
-            val entity = parseObject(obj) ?: continue
+        for ((idx, obj) in objects.withIndex()) {
+            val entity = parseObject(obj)
+            if (entity == null) {
+                Log.w(TAG, "rebuildFromRaw[$idx]: parseObject returned null")
+                continue
+            }
 
             if (Blacklist.contains(context, entity.pkg)) {
+                Log.d(TAG, "rebuildFromRaw[$idx]: blacklisted pkg=${entity.pkg}")
                 skippedByBlacklist++
                 continue
             }
 
-            val parseResult = if (Whitelist.contains(context, entity.pkg)) {
+            val onWhitelist = Whitelist.contains(context, entity.pkg)
+            val parseResult = if (onWhitelist) {
                 CardParser.parse(context, entity)
-            } else null
+            } else {
+                Log.d(TAG, "rebuildFromRaw[$idx]: not whitelisted pkg=${entity.pkg}")
+                null
+            }
 
             val finalEntity = if (parseResult != null) {
                 parsed++
@@ -57,7 +70,10 @@ object UpdateAction {
                     parsedAt = System.currentTimeMillis()
                 )
             } else {
-                if (Whitelist.contains(context, entity.pkg)) skippedByParseFail++
+                if (onWhitelist) {
+                    Log.d(TAG, "rebuildFromRaw[$idx]: whitelisted but parse failed pkg=${entity.pkg} ts=${entity.ts}")
+                    skippedByParseFail++
+                }
                 entity
             }
 
@@ -65,10 +81,14 @@ object UpdateAction {
                 dao.insert(finalEntity)
                 rebuilt++
             } catch (e: Exception) {
-                Log.w(TAG, "insert failed for id=${entity.id}", e)
+                Log.w(TAG, "rebuildFromRaw[$idx]: insert failed id=${entity.id}", e)
             }
         }
 
+        Log.i(
+            TAG,
+            "rebuildFromRaw: done rebuilt=$rebuilt parsed=$parsed skipBL=$skippedByBlacklist skipParseFail=$skippedByParseFail"
+        )
         RebuildResult(
             rebuilt = rebuilt,
             parsed = parsed,

@@ -35,42 +35,55 @@ class CardNotificationListener : NotificationListenerService() {
             rawExtras = rawExtrasJson
         )
 
-        Log.d(TAG, "posted pkg=$pkg title=${baseEntity.title}")
+        Log.d(TAG, "posted pkg=$pkg ts=${sbn.postTime} title=${baseEntity.title} body.len=${baseEntity.bigText.length.coerceAtLeast(baseEntity.text.length)}")
 
         val ctx = applicationContext
         scope.launch {
             try {
                 RawDumpAll.appendObject(ctx, buildExternalObject(baseEntity, rawExtrasJson))
+                Log.d(TAG, "raw all dump ok pkg=$pkg")
             } catch (e: Exception) {
-                Log.w(TAG, "raw all dump failed", e)
+                Log.w(TAG, "raw all dump failed pkg=$pkg", e)
             }
 
-            if (Blacklist.contains(ctx, pkg)) return@launch
+            if (Blacklist.contains(ctx, pkg)) {
+                Log.d(TAG, "blacklisted pkg=$pkg, skipping db/whitelist")
+                return@launch
+            }
 
             try {
-                val parsed = if (Whitelist.contains(ctx, pkg)) {
+                val onWhitelist = Whitelist.contains(ctx, pkg)
+                val parsed = if (onWhitelist) {
+                    Log.d(TAG, "whitelisted pkg=$pkg, attempting parse")
                     CardParser.parse(ctx, baseEntity)
-                } else null
+                } else {
+                    Log.d(TAG, "not whitelisted pkg=$pkg, skipping parse")
+                    null
+                }
 
                 val finalEntity = if (parsed != null) {
+                    Log.i(TAG, "parsed pkg=$pkg amount=${parsed.amount} merchant=${parsed.merchant} filter=${parsed.filterId}")
                     baseEntity.copy(
                         amount = parsed.amount,
                         merchant = parsed.merchant,
                         parsedAt = System.currentTimeMillis()
                     )
                 } else {
+                    if (onWhitelist) Log.d(TAG, "whitelisted but parse returned null pkg=$pkg")
                     baseEntity
                 }
 
                 val newId = NotificationDatabase.get(ctx).notificationDao().insert(finalEntity)
+                Log.d(TAG, "db insert ok id=$newId pkg=$pkg parsed=${parsed != null}")
                 val withId = finalEntity.copy(id = newId)
                 try {
                     RawDump.appendObject(ctx, buildExternalObject(withId, rawExtrasJson))
+                    Log.d(TAG, "raw dump ok pkg=$pkg id=$newId")
                 } catch (e: Exception) {
-                    Log.w(TAG, "raw dump failed", e)
+                    Log.w(TAG, "raw dump failed pkg=$pkg", e)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "db insert failed", e)
+                Log.w(TAG, "db insert failed pkg=$pkg", e)
             }
         }
     }
