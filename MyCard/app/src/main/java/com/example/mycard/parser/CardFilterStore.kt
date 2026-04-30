@@ -19,23 +19,37 @@ object CardFilterStore {
     private val lock = Any()
 
     fun load(context: Context): CardFiltersFile {
-        cached?.let { return it }
+        cached?.let {
+            Log.d(TAG, "load: cache hit (filters=${it.filters.size}, pkgs=${byPkgIndex.keys})")
+            return it
+        }
         synchronized(lock) {
             cached?.let { return it }
-            val parsed = readShared() ?: CardFiltersFile()
-            cached = parsed
-            byPkgIndex = parsed.filters.groupBy { it.packageName }
-            return parsed
+            Log.d(TAG, "load: cache miss, reading from disk")
+            val parsed = readShared()
+            if (parsed != null) {
+                cached = parsed
+                byPkgIndex = parsed.filters.groupBy { it.packageName }
+                Log.i(TAG, "load: loaded filters=${parsed.filters.size} pkgs=${byPkgIndex.keys}")
+                return parsed
+            }
+            Log.w(TAG, "load: no readable file, bootstrapping empty CardFiltersFile so user can target it via adb push")
+            val empty = CardFiltersFile()
+            saveAll(context, empty)
+            return cached ?: empty
         }
     }
 
     fun byPackage(context: Context, pkg: String): List<CardFilter> {
         load(context)
-        return byPkgIndex[pkg].orEmpty()
+        val result = byPkgIndex[pkg].orEmpty()
+        Log.d(TAG, "byPackage(pkg=$pkg): candidates=${result.size}")
+        return result
     }
 
     fun invalidate() {
         synchronized(lock) {
+            Log.d(TAG, "invalidate: clearing cache (had ${cached?.filters?.size ?: 0} filters)")
             cached = null
             byPkgIndex = emptyMap()
         }
@@ -50,8 +64,9 @@ object CardFilterStore {
                 f.writeText(text, Charsets.UTF_8)
                 cached = file
                 byPkgIndex = file.filters.groupBy { it.packageName }
+                Log.i(TAG, "saveAll: wrote filters=${file.filters.size} bytes=${text.length}")
             } catch (e: Exception) {
-                Log.w(TAG, "save failed", e)
+                Log.w(TAG, "saveAll: write failed", e)
             }
         }
     }
@@ -60,13 +75,16 @@ object CardFilterStore {
 
     private fun readShared(): CardFiltersFile? {
         val f = filePath()
-        if (!f.exists()) return null
+        Log.d(TAG, "readShared: path=${f.absolutePath} exists=${f.exists()} canRead=${if (f.exists()) f.canRead() else "n/a"}")
+        if (!f.exists() || !f.canRead()) return null
         return try {
             FileReader(f).use { r ->
-                gson.fromJson(r, CardFiltersFile::class.java)
+                val parsed = gson.fromJson(r, CardFiltersFile::class.java)
+                Log.i(TAG, "readShared: parsed filters=${parsed?.filters?.size ?: 0}")
+                parsed
             }
         } catch (e: Exception) {
-            Log.w(TAG, "read failed", e)
+            Log.w(TAG, "readShared: read failed", e)
             null
         }
     }

@@ -49,6 +49,7 @@ object RawDump {
         synchronized(lock) {
             ensureLoadedLocked()
             cache.add(obj)
+            Log.d(TAG, "appendObject: cache size=${cache.size}")
             writeAllLocked()
         }
     }
@@ -56,6 +57,7 @@ object RawDump {
     fun readAllObjects(@Suppress("UNUSED_PARAMETER") context: Context): List<JsonObject> {
         synchronized(lock) {
             ensureLoadedLocked()
+            Log.d(TAG, "readAllObjects: returning ${cache.size} objects")
             return cache.toList()
         }
     }
@@ -65,6 +67,7 @@ object RawDump {
             ensureLoadedLocked()
             val before = cache.size
             cache.removeAll { it.get("pkg")?.asString == targetPkg }
+            Log.d(TAG, "removeLinesByPkg($targetPkg): $before -> ${cache.size}")
             if (cache.size != before) writeAllLocked()
         }
     }
@@ -74,6 +77,7 @@ object RawDump {
             ensureLoadedLocked()
             val before = cache.size
             cache.removeAll { (it.get("id")?.asLong ?: -1L) == targetId }
+            Log.d(TAG, "removeLineById($targetId): $before -> ${cache.size}")
             if (cache.size != before) writeAllLocked()
         }
     }
@@ -92,6 +96,7 @@ object RawDump {
     private fun ensureLoadedLocked() {
         if (loaded) return
         val f = file()
+        Log.d(TAG, "ensureLoadedLocked: path=${f.absolutePath} exists=${f.exists()}")
         if (!f.exists()) {
             loaded = true
             return
@@ -108,8 +113,9 @@ object RawDump {
                     }
                 }
             }
+            Log.i(TAG, "ensureLoadedLocked: loaded ${cache.size} objects")
         } catch (e: Exception) {
-            Log.w(TAG, "load failed", e)
+            Log.w(TAG, "ensureLoadedLocked: load failed", e)
         }
         loaded = true
     }
@@ -124,8 +130,9 @@ object RawDump {
                     w.write("\n")
                 }
             }
+            Log.d(TAG, "writeAllLocked: wrote ${cache.size} objects")
         } catch (e: Exception) {
-            Log.w(TAG, "writeAll failed", e)
+            Log.w(TAG, "writeAllLocked: failed", e)
         }
     }
 }

@@ -22,6 +22,7 @@ object RawDumpAll {
         synchronized(lock) {
             val f = file()
             val current = readFromFile(f)
+            Log.d(TAG, "appendObject: read ${current.size} existing, appending 1 -> writing ${current.size + 1}")
             writeToFile(f, current + obj)
         }
     }
@@ -45,7 +46,7 @@ object RawDumpAll {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "read failed (treating as empty)", e)
+            Log.w(TAG, "readFromFile: read failed (treating as empty) path=${f.absolutePath}", e)
             emptyList()
         }
     }
@@ -59,8 +60,9 @@ object RawDumpAll {
                     w.write("\n")
                 }
             }
+            Log.d(TAG, "writeToFile: wrote ${items.size} objects")
         } catch (e: Exception) {
-            Log.w(TAG, "write failed", e)
+            Log.w(TAG, "writeToFile: failed", e)
         }
     }
 }
