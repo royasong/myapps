@@ -54,6 +54,7 @@ object RawDump {
         synchronized(lock) {
             ensureLoadedLocked(context)
             cache.add(obj)
+            Log.d(TAG, "appendObject: cache size=${cache.size}")
             writeAllLocked(context)
         }
     }
@@ -61,6 +62,7 @@ object RawDump {
     fun readAllObjects(context: Context): List<JsonObject> {
         synchronized(lock) {
             ensureLoadedLocked(context)
+            Log.d(TAG, "readAllObjects: returning ${cache.size} objects")
             return cache.toList()
         }
     }
@@ -70,6 +72,7 @@ object RawDump {
             ensureLoadedLocked(context)
             val before = cache.size
             cache.removeAll { it.get("pkg")?.asString == targetPkg }
+            Log.d(TAG, "removeLinesByPkg($targetPkg): $before -> ${cache.size}")
             if (cache.size != before) writeAllLocked(context)
         }
     }
@@ -79,6 +82,7 @@ object RawDump {
             ensureLoadedLocked(context)
             val before = cache.size
             cache.removeAll { (it.get("id")?.asLong ?: -1L) == targetId }
+            Log.d(TAG, "removeLineById($targetId): $before -> ${cache.size}")
             if (cache.size != before) writeAllLocked(context)
         }
     }
@@ -89,9 +93,11 @@ object RawDump {
     private fun ensureLoadedLocked(context: Context) {
         if (loaded) return
         val uri = ensureFileUri(context) ?: run {
+            Log.w(TAG, "ensureLoadedLocked: no uri, treating cache as empty")
             loaded = true
             return
         }
+        Log.d(TAG, "ensureLoadedLocked: loading from uri=$uri")
         try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 InputStreamReader(stream, Charsets.UTF_8).use { r ->
@@ -106,14 +112,18 @@ object RawDump {
                     }
                 }
             }
+            Log.i(TAG, "ensureLoadedLocked: loaded ${cache.size} objects")
         } catch (e: Exception) {
-            Log.w(TAG, "load failed", e)
+            Log.w(TAG, "ensureLoadedLocked: load failed", e)
         }
         loaded = true
     }
 
     private fun writeAllLocked(context: Context) {
-        val uri = ensureFileUri(context) ?: return
+        val uri = ensureFileUri(context) ?: run {
+            Log.w(TAG, "writeAllLocked: no uri")
+            return
+        }
         try {
             context.contentResolver.openOutputStream(uri, "wt")?.use { os ->
                 cache.forEach {
@@ -121,17 +131,22 @@ object RawDump {
                     os.write("\n".toByteArray(Charsets.UTF_8))
                 }
             }
+            Log.d(TAG, "writeAllLocked: wrote ${cache.size} objects")
         } catch (e: Exception) {
-            Log.w(TAG, "writeAll failed, invalidating uri", e)
+            Log.w(TAG, "writeAllLocked: failed, invalidating uri", e)
             cachedFileUri = null
         }
     }
 
     private fun ensureFileUri(context: Context): Uri? {
-        cachedFileUri?.let { return it }
+        cachedFileUri?.let {
+            Log.d(TAG, "ensureFileUri: cached uri=$it")
+            return it
+        }
         val resolver = context.contentResolver
         val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val relativePath = "${Environment.DIRECTORY_DOCUMENTS}/$SUBDIR/"
+        Log.d(TAG, "ensureFileUri: query name=$FILE_NAME path=$relativePath")
 
         val projection = arrayOf(MediaStore.Files.FileColumns._ID)
         val selection =
@@ -145,19 +160,22 @@ object RawDump {
                 val id = c.getLong(0)
                 val uri = ContentUris.withAppendedId(collection, id)
                 if (canOpen(resolver, uri)) {
+                    Log.i(TAG, "ensureFileUri: existing row id=$id uri=$uri")
                     cachedFileUri = uri
                     return uri
                 }
-                Log.w(TAG, "stale MediaStore row id=$id, will recreate")
+                Log.w(TAG, "ensureFileUri: stale row id=$id (cannot open), will recreate")
                 staleId = id
+            } else {
+                Log.d(TAG, "ensureFileUri: no row found, creating")
             }
-        }
+        } ?: Log.w(TAG, "ensureFileUri: query returned null cursor")
 
         staleId?.let { id ->
             try {
                 resolver.delete(ContentUris.withAppendedId(collection, id), null, null)
             } catch (e: Exception) {
-                Log.w(TAG, "stale row delete failed (continuing)", e)
+                Log.w(TAG, "ensureFileUri: stale row delete failed", e)
             }
         }
 
@@ -168,6 +186,7 @@ object RawDump {
             put(MediaStore.Files.FileColumns.IS_PENDING, 0)
         }
         val newUri = resolver.insert(collection, values)
+        Log.i(TAG, "ensureFileUri: inserted new row uri=$newUri")
         cachedFileUri = newUri
         return newUri
     }
