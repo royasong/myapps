@@ -22,7 +22,11 @@ object UpdateAction {
     private const val TAG = "UpdateAction"
 
     suspend fun rebuildFromRaw(context: Context): RebuildResult = withContext(Dispatchers.IO) {
+        // 디스크에서 최신 상태로 모두 다시 읽기
         CardFilterStore.invalidate()
+        Whitelist.invalidate()
+        Blacklist.invalidate()
+        RawDump.invalidate()
 
         val objects = RawDump.readAllObjects(context)
         if (objects.isEmpty()) {

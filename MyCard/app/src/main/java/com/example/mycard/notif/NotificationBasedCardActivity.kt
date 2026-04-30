@@ -205,7 +205,7 @@ fun NotificationBasedCardScreen() {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = formatTs(item.ts),
                                             style = MaterialTheme.typography.bodySmall,
@@ -216,25 +216,27 @@ fun NotificationBasedCardScreen() {
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
                                         Text(
                                             text = typeText,
-                                            style = MaterialTheme.typography.bodyMedium,
+                                            style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Medium,
                                             color = if (isCancel)
                                                 MaterialTheme.colorScheme.error
                                             else
                                                 MaterialTheme.colorScheme.primary
                                         )
+                                        Text(
+                                            text = "%,d원".format(displayAmount),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (isCancel)
+                                                MaterialTheme.colorScheme.error
+                                            else
+                                                MaterialTheme.colorScheme.onSurface
+                                        )
                                     }
-                                    Text(
-                                        text = "%,d원".format(displayAmount),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        color = if (isCancel)
-                                            MaterialTheme.colorScheme.error
-                                        else
-                                            MaterialTheme.colorScheme.onSurface
-                                    )
                                 }
                                 HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
                             }

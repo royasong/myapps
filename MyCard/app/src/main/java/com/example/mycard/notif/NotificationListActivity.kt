@@ -179,11 +179,13 @@ fun NotificationListScreen() {
                     context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                 }
             )
-            BatteryOptimizationBanner(
-                ignored = batteryOptIgnored,
-                onRequestExclude = { requestIgnoreBatteryOptimizations(context) },
-                onOpenAppBattery = { openAppBatterySettings(context) }
-            )
+            if (!batteryOptIgnored) {
+                BatteryOptimizationBanner(
+                    ignored = batteryOptIgnored,
+                    onRequestExclude = { requestIgnoreBatteryOptimizations(context) },
+                    onOpenAppBattery = { openAppBatterySettings(context) }
+                )
+            }
             when {
                 logs.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -206,7 +208,7 @@ fun NotificationListScreen() {
                         contentPadding = PaddingValues(vertical = 6.dp)
                     ) {
                         items(items = logs, key = { it.id }) { log ->
-                            SwipeableNotificationCard(
+                            NotificationCard(
                                 log = log,
                                 isWhitelisted = log.pkg in whitelist,
                                 onDelete = { deleteLog(log) },
@@ -221,60 +223,12 @@ fun NotificationListScreen() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
-@Composable
-private fun SwipeableNotificationCard(
-    log: NotificationEntity,
-    isWhitelisted: Boolean,
-    onDelete: () -> Unit,
-    onToggleWhitelist: () -> Unit,
-    onAddBlacklist: () -> Unit
-) {
-    val state = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.StartToEnd ||
-                value == SwipeToDismissBoxValue.EndToStart
-            ) {
-                onDelete()
-                true
-            } else false
-        }
-    )
-
-    SwipeToDismissBox(
-        state = state,
-        backgroundContent = {
-            val alignment = when (state.dismissDirection) {
-                SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
-                SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
-                else -> Alignment.Center
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFE53935))
-                    .padding(horizontal = 20.dp),
-                contentAlignment = alignment
-            ) {
-                Icon(Icons.Filled.Delete, contentDescription = "삭제", tint = Color.White)
-            }
-        }
-    ) {
-        NotificationCard(
-            log = log,
-            isWhitelisted = isWhitelisted,
-            onToggleWhitelist = onToggleWhitelist,
-            onAddBlacklist = onAddBlacklist
-        )
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NotificationCard(
     log: NotificationEntity,
     isWhitelisted: Boolean,
+    onDelete: () -> Unit,
     onToggleWhitelist: () -> Unit,
     onAddBlacklist: () -> Unit
 ) {
@@ -376,6 +330,13 @@ private fun NotificationCard(
                     onClick = {
                         menuOpen = false
                         onAddBlacklist()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("삭제") },
+                    onClick = {
+                        menuOpen = false
+                        onDelete()
                     }
                 )
             }
