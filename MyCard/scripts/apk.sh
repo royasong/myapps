@@ -210,8 +210,8 @@ main_menu() {
     echo "│  1) devices             — 연결된 디바이스 목록"
     echo "│  2) install             — 디바이스 선택 후 설치 (a=전체)"
     echo "│  3) uninstall           — 디바이스 선택 후 제거 (a=전체)"
+    echo "│  4) build               — ./gradlew assembleDebug"
     echo "│  8) logcat grep         — 디바이스 선택 + 패턴으로 grep"
-    echo "│  9) build               — ./gradlew assembleDebug"
     echo "│  0) exit"
     echo "└────────────────────────────────────────────────────┘"
     read -rsn1 -p "> " choice
@@ -220,8 +220,8 @@ main_menu() {
       1) action_list_devices ;;
       2) action_install ;;
       3) action_uninstall ;;
+      4) action_build ;;
       8) action_logcat ;;
-      9) action_build ;;
       0|q) echo "bye"; exit 0 ;;
       "") ;;  # 빈 입력(Enter) 은 조용히 넘김
       *) echo "  잘못된 선택: $choice" ;;
