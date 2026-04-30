@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -70,6 +71,7 @@ import com.example.mycard.SettingsActivity
 import com.example.mycard.notif.NotificationBasedCardActivity
 import com.example.mycard.notif.NotificationListActivity
 import com.example.mycard.notif.UpdateAction
+import com.example.mycard.storage.AppStorage
 import com.example.mycard.widget.CardWidgetProvider
 import kotlinx.coroutines.launch
 import android.os.Environment
@@ -215,6 +217,18 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             if (!receiveGranted) add(Manifest.permission.RECEIVE_SMS)
         }
         if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+
+        if (!AppStorage.hasAllFilesAccess()) {
+            coroutineScope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = "외부 저장 권한 필요 (설정에서 토글하세요)",
+                    actionLabel = "설정"
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    (context as? android.app.Activity)?.let { AppStorage.openAllFilesAccessSettings(it) }
+                }
+            }
+        }
     }
 
     // 총액이 변경되면 위젷 업데이트
