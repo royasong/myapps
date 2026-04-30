@@ -4,16 +4,18 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
-import android.util.Log;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,6 +59,11 @@ public class SMSReader {
     private static final Pattern DEFAULT_AMOUNT_PATTERN =
             Pattern.compile("(\\d[\\d,]*)원");
 
+    // 조회할 받은 문자함 URI 목록
+    private static final List<Uri> INBOX_URIS = Arrays.asList(
+            Uri.parse("content://im/chat")
+    );
+
     public static List<SmsGroup> readCardApprovalGrouped(Context context) {
         Map<String, List<SmsItem>> groupMap = new LinkedHashMap<>();
 
@@ -64,7 +71,6 @@ public class SMSReader {
         String cardGroupStr = getCardGroup(context);
         String[] cardGroups = cardGroupStr.isEmpty() ? new String[0] : cardGroupStr.split("\n");
 
-        Uri uri = Uri.parse("content://sms/inbox");
         ContentResolver cr = context.getContentResolver();
 
         // 이번 달 1일 00:00:00의 타임스탬프 구하기
@@ -77,10 +83,8 @@ public class SMSReader {
 
         long startTime = cal.getTimeInMillis();
 
-        // 쿼리 조건 설정
-        String selection = "address = ? AND date >= ? AND body LIKE '[Web발신]%'";
         SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.KOREA);
-        
+
         for (String group : cardGroups) {
             String trimmed = group.trim();
             if (!trimmed.isEmpty()) {
@@ -90,24 +94,44 @@ public class SMSReader {
                     String configId = parts[1].trim();
                     String[] selectionArgs = new String[]{ targetNumber, String.valueOf(startTime)};
 
-                    try (Cursor c = cr.query(
-                                        uri,
-                                        new String[]{"address", "date", "body"},
-                                        selection,      // 조건절 추가
-                                        selectionArgs,  // 파라미터 추가
-                                        "date DESC"
-                    )) {
-                        if (c != null) {
-                            while (c.moveToNext()) {
+                    Set<String> seenKeys = new HashSet<>();
 
-                                String address = c.getString(0);
-                                long timeStamp = c.getLong(1);
-                                String body = c.getString(2);
+                    for (Uri uri : INBOX_URIS) {
+                        boolean isRcs = "im".equals(uri.getAuthority());
+                        // RCS body는 JSON 포맷 → [Web발신] 포함 여부는 코드에서 처리
+                        String uriSelection = isRcs
+                                ? "address = ? AND date >= ?"
+                                : "address = ? AND date >= ? AND body LIKE '%[Web발신]%'";
+
+                        try (Cursor c = cr.query(uri, null, uriSelection, selectionArgs, "date DESC")) {
+                            if (c == null) continue;
+
+                            int addrIdx = c.getColumnIndex("address");
+                            int dateIdx = c.getColumnIndex("date");
+                            int bodyIdx = -1;
+                            for (String col : new String[]{"body", "text", "content", "message"}) {
+                                int idx = c.getColumnIndex(col);
+                                if (idx >= 0) { bodyIdx = idx; break; }
+                            }
+                            if (addrIdx < 0 || dateIdx < 0 || bodyIdx < 0) continue;
+
+                            while (c.moveToNext()) {
+                                String address = c.getString(addrIdx);
+                                long timeStamp = c.getLong(dateIdx);
+                                String body = c.getString(bodyIdx);
+                                if (body == null) continue;
+
+                                // URI 간 중복 제거
+                                String dedupKey = address + "_" + timeStamp;
+                                if (!seenKeys.add(dedupKey)) continue;
+
+                                // [Web발신] 미포함 메시지 제외
+                                if (!body.contains("[Web발신]")) continue;
 
                                 // [Web발신] 이후 모든 공백 제거
-                                String trimmedBody = body.replaceFirst("^\\[Web발신\\]\\s*", "").replaceAll("\\s+", "");
-                                
-                                if(!trimmedBody.contains(configId.trim())) continue;
+                                String trimmedBody = body.replaceFirst("\\[Web발신\\]\\s*", "").replaceAll("\\s+", "");
+
+                                if (!trimmedBody.contains(configId.trim())) continue;
 
                                 // "자동결제" 또는 "자동 결제" → "승인"으로 대체
                                 String processedBody = trimmedBody.replace("자동결제", "승인").replace("자동 결제", "승인");
@@ -119,22 +143,13 @@ public class SMSReader {
 
                                 if (!hasApproval && !hasCancel && !hasAmount) continue;
 
-                                // "취소" 문구 포함 여부 확인
                                 boolean isCancel = processedBody.contains("취소");
 
-                                // 금액 추출 (취소→취소패턴, 승인/자동결제→승인패턴)
-                                Pattern amountPattern;
-                                if (isCancel) {
-                                    amountPattern = CANCEL_AMOUNT_PATTERN;
-                                } else {
-                                    amountPattern = AMOUNT_PATTERN;  // "자동결제" → "승인" 대체 후 승인 패턴 사용
-                                }
-
+                                Pattern amountPattern = isCancel ? CANCEL_AMOUNT_PATTERN : AMOUNT_PATTERN;
                                 Matcher amountMatcher = amountPattern.matcher(processedBody);
                                 if (!amountMatcher.find()) continue;
                                 long amount = Long.parseLong(amountMatcher.group(1).replace(",", ""));
 
-                                // 취소 금액은 음수로 저장
                                 long finalAmount = isCancel ? -amount : amount;
                                 String date = fmt.format(new Date(timeStamp));
                                 SmsItem item = new SmsItem(address, date, body, finalAmount);
@@ -144,9 +159,9 @@ public class SMSReader {
                                 }
                                 groupMap.get(configId).add(item);
                             }
+                        } catch (Exception e) {
+                            // ignored
                         }
-                    } catch (Exception e) {
-                        e.printStackTrace();
                     }
                 }
             }

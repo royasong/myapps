@@ -110,6 +110,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// RCS(JSON) / SMS(plain text) 모두 처리 — 실제 결제 텍스트만 한 줄로 반환
+private fun extractBodyText(body: String): String {
+    val raw = if (body.trimStart().startsWith("{")) {
+        Regex(""""text":"([^"]+)"""").findAll(body)
+            .maxByOrNull { it.groupValues[1].length }
+            ?.groupValues?.get(1) ?: body
+    } else body
+    return raw
+        .replace("[Web발신]", "")
+        .replace(Regex("누적[^\\r\\n\"]*"), "")
+        .replace("\\r\\n", " ").replace("\\n", " ").replace("\\r", " ")
+        .replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+        .replace(Regex(" {2,}"), " ")
+        .trim()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CardApprovalScreen(shouldRefresh: Boolean = false) {
@@ -424,29 +440,31 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                                 )
                                                 Text(
                                                     modifier = Modifier.widthIn(max = halfScreenWidth),
-                                                    text = item.body.replace("[Web발신]", "").replace("누적.*".toRegex(), "").trim(),
+                                                    text = extractBodyText(item.body),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
+                                            }
+                                            Column(horizontalAlignment = Alignment.End) {
                                                 Text(
                                                     text = typeText,
-                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    style = MaterialTheme.typography.bodySmall,
                                                     fontWeight = FontWeight.Medium,
                                                     color = if (isCancel)
                                                         MaterialTheme.colorScheme.error
                                                     else
                                                         MaterialTheme.colorScheme.primary
                                                 )
+                                                Text(
+                                                    text = "%,d원".format(displayAmount),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (isCancel)
+                                                        MaterialTheme.colorScheme.error
+                                                    else
+                                                        MaterialTheme.colorScheme.onSurface
+                                                )
                                             }
-                                            Text(
-                                                text = "%,d원".format(displayAmount),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Medium,
-                                                color = if (isCancel)
-                                                    MaterialTheme.colorScheme.error
-                                                else
-                                                    MaterialTheme.colorScheme.onSurface
-                                            )
                                         }
                                         HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
                                     }
