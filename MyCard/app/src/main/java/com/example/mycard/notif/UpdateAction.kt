@@ -23,7 +23,11 @@ object UpdateAction {
 
     suspend fun rebuildFromRaw(context: Context): RebuildResult = withContext(Dispatchers.IO) {
         Log.i(TAG, "rebuildFromRaw: start")
+        // 디스크에서 최신 상태로 모두 다시 읽기
         CardFilterStore.invalidate()
+        Whitelist.invalidate()
+        Blacklist.invalidate()
+        RawDump.invalidate()
 
         val objects = RawDump.readAllObjects(context)
         Log.i(TAG, "rebuildFromRaw: loaded ${objects.size} raw objects")

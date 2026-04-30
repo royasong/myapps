@@ -8,6 +8,9 @@ import android.content.Intent
 import android.provider.Telephony
 import com.example.mycard.sms.SMSReader
 import com.example.mycard.widget.CardWidgetProvider
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.concurrent.thread
 
 class SmsReceiver : BroadcastReceiver() {
@@ -18,6 +21,10 @@ class SmsReceiver : BroadcastReceiver() {
         if (messages.isNullOrEmpty()) return
 
         val senderAddress = messages[0].originatingAddress ?: return
+
+        val fullBody = messages.joinToString("") { it.messageBody }
+        if (!fullBody.contains("[Web발신]")) return
+        if (!fullBody.contains("승인") && !fullBody.contains("취소")) return
 
         val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
         val cardGroupStr = prefs.getString("cardGroup", "") ?: ""
@@ -31,11 +38,6 @@ class SmsReceiver : BroadcastReceiver() {
         }
 
         if (!isCardSms) return
-
-        val fullBody = messages.joinToString("") { it.messageBody }
-        if (!fullBody.contains("[Web발신]")) return
-        if (!fullBody.contains("승인") && !fullBody.contains("취소")) return
-
         // goAsync()로 onReceive 종료 후에도 작업 유지, 스레드에서 DB 저장 대기 후 재조회
         val pending = goAsync()
         thread {
@@ -55,9 +57,9 @@ class SmsReceiver : BroadcastReceiver() {
             try {
                 val groups = SMSReader.readCardApprovalGrouped(context)
                 val grandTotal = groups.sumOf { it.totalAmount }
-
-                val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
-                prefs.edit().putLong("widget_total", grandTotal).apply()
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA).format(Date())
+                val totalCount = groups.sumOf { it.items.size }
+                val todayCount = groups.sumOf { g -> g.items.count { it.date.startsWith(todayStr) } }
 
                 val groupsJson = StringBuilder("[")
                 groups.forEachIndexed { index, group ->
@@ -65,7 +67,14 @@ class SmsReceiver : BroadcastReceiver() {
                     if (index < groups.size - 1) groupsJson.append(",")
                 }
                 groupsJson.append("]")
-                prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
+
+                val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
+                prefs.edit()
+                    .putLong("widget_total", grandTotal)
+                    .putInt("widget_today_count", todayCount)
+                    .putInt("widget_total_count", totalCount)
+                    .putString("widget_groups", groupsJson.toString())
+                    .apply()
 
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 val widgetComponentName = ComponentName(context, CardWidgetProvider::class.java)

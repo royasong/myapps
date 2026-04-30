@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -70,6 +71,7 @@ import com.example.mycard.SettingsActivity
 import com.example.mycard.notif.NotificationBasedCardActivity
 import com.example.mycard.notif.NotificationListActivity
 import com.example.mycard.notif.UpdateAction
+import com.example.mycard.storage.AppStorage
 import com.example.mycard.widget.CardWidgetProvider
 import kotlinx.coroutines.launch
 import android.os.Environment
@@ -77,8 +79,6 @@ import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -90,16 +90,55 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        scheduleDailyRefresh()
 
         // 위젯에서 새로고침 요청 여부 확인
         val shouldRefresh = intent.getBooleanExtra("refresh", false)
-        
+
         setContent {
             MyCardTheme {
                 CardApprovalScreen(shouldRefresh = shouldRefresh)
             }
         }
     }
+
+    private fun scheduleDailyRefresh() {
+        val now = Calendar.getInstance()
+        val target = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 1)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (!after(now)) add(Calendar.DAY_OF_MONTH, 1)
+        }
+        val initialDelay = target.timeInMillis - now.timeInMillis
+
+        val workRequest = PeriodicWorkRequestBuilder<CardRefreshWorker>(1, TimeUnit.DAYS)
+            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "card_refresh_daily",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            workRequest
+        )
+    }
+}
+
+// RCS(JSON) / SMS(plain text) 모두 처리 — 실제 결제 텍스트만 한 줄로 반환
+private fun extractBodyText(body: String): String {
+    val raw = if (body.trimStart().startsWith("{")) {
+        Regex(""""text":"([^"]+)"""").findAll(body)
+            .maxByOrNull { it.groupValues[1].length }
+            ?.groupValues?.get(1) ?: body
+    } else body
+    return raw
+        .replace("[Web발신]", "")
+        .replace(Regex("누적[^\\r\\n\"]*"), "")
+        .replace("\\r\\n", " ").replace("\\n", " ").replace("\\r", " ")
+        .replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+        .replace(Regex(" {2,}"), " ")
+        .trim()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -178,14 +217,33 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             if (!receiveGranted) add(Manifest.permission.RECEIVE_SMS)
         }
         if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+
+        if (!AppStorage.hasAllFilesAccess()) {
+            coroutineScope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = "외부 저장 권한 필요 (설정에서 토글하세요)",
+                    actionLabel = "설정"
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    (context as? android.app.Activity)?.let { AppStorage.openAllFilesAccessSettings(it) }
+                }
+            }
+        }
     }
 
     // 총액이 변경되면 위젷 업데이트
     LaunchedEffect(groups) {
         val grandTotal = groups.sumOf { it.totalAmount }
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date())
+        val totalCount = groups.sumOf { it.items.size }
+        val todayCount = groups.sumOf { g -> g.items.count { it.date.startsWith(todayStr) } }
         val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
 
-        prefs.edit().putLong("widget_total", grandTotal).apply()
+        prefs.edit()
+            .putLong("widget_total", grandTotal)
+            .putInt("widget_today_count", todayCount)
+            .putInt("widget_total_count", totalCount)
+            .apply()
 
         val groupsJson = StringBuilder("[")
         groups.forEachIndexed { index, group ->
@@ -233,11 +291,19 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         }
     }
 
+    val todayStr = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date()) }
+    val totalCount = groups.sumOf { it.items.size }
+    val todayCount = groups.sumOf { group -> group.items.count { it.date.startsWith(todayStr) } }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("이번 달 카드 승인 내역", fontWeight = FontWeight.Bold) },
+                title = {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("이번 달 카드 내역 ($todayCount/$totalCount)", fontWeight = FontWeight.Bold)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFFE3F2FD),
                     titleContentColor = Color(0xFF1565C0),
@@ -435,29 +501,31 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                                 )
                                                 Text(
                                                     modifier = Modifier.widthIn(max = halfScreenWidth),
-                                                    text = item.body.replace("[Web발신]", "").replace("누적.*".toRegex(), "").trim(),
+                                                    text = extractBodyText(item.body),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
+                                            }
+                                            Column(horizontalAlignment = Alignment.End) {
                                                 Text(
                                                     text = typeText,
-                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    style = MaterialTheme.typography.bodySmall,
                                                     fontWeight = FontWeight.Medium,
                                                     color = if (isCancel)
                                                         MaterialTheme.colorScheme.error
                                                     else
                                                         MaterialTheme.colorScheme.primary
                                                 )
+                                                Text(
+                                                    text = "%,d원".format(displayAmount),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (isCancel)
+                                                        MaterialTheme.colorScheme.error
+                                                    else
+                                                        MaterialTheme.colorScheme.onSurface
+                                                )
                                             }
-                                            Text(
-                                                text = "%,d원".format(displayAmount),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Medium,
-                                                color = if (isCancel)
-                                                    MaterialTheme.colorScheme.error
-                                                else
-                                                    MaterialTheme.colorScheme.onSurface
-                                            )
                                         }
                                         HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
                                     }
