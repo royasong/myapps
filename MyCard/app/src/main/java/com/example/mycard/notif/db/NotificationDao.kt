@@ -2,13 +2,14 @@ package com.example.mycard.notif.db
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NotificationDao {
 
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(entity: NotificationEntity): Long
 
     @Query("SELECT * FROM notifications ORDER BY ts DESC")

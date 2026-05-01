@@ -6,7 +6,10 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "notifications",
-    indices = [Index(value = ["ts"])]
+    indices = [
+        Index(value = ["ts"]),
+        Index(value = ["pkg", "title", "text", "bigText"], unique = true)
+    ]
 )
 data class NotificationEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
@@ -21,5 +24,6 @@ data class NotificationEntity(
     val rawExtras: String = "{}",
     val amount: Long? = null,
     val merchant: String? = null,
-    val parsedAt: Long? = null
+    val parsedAt: Long? = null,
+    val filterId: String? = null
 )
