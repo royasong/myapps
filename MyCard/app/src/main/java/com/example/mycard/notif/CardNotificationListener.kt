@@ -66,7 +66,8 @@ class CardNotificationListener : NotificationListenerService() {
                     baseEntity.copy(
                         amount = parsed.amount,
                         merchant = parsed.merchant,
-                        parsedAt = System.currentTimeMillis()
+                        parsedAt = System.currentTimeMillis(),
+                        filterId = parsed.filterId
                     )
                 } else {
                     if (onWhitelist) Log.d(TAG, "whitelisted but parse returned null pkg=$pkg")
@@ -74,13 +75,17 @@ class CardNotificationListener : NotificationListenerService() {
                 }
 
                 val newId = NotificationDatabase.get(ctx).notificationDao().insert(finalEntity)
-                Log.d(TAG, "db insert ok id=$newId pkg=$pkg parsed=${parsed != null}")
-                val withId = finalEntity.copy(id = newId)
-                try {
-                    RawDump.appendObject(ctx, buildExternalObject(withId, rawExtrasJson))
-                    Log.d(TAG, "raw dump ok pkg=$pkg id=$newId")
-                } catch (e: Exception) {
-                    Log.w(TAG, "raw dump failed pkg=$pkg", e)
+                if (newId == -1L) {
+                    Log.i(TAG, "db insert dedupe-ignored pkg=$pkg title=${finalEntity.title}")
+                } else {
+                    Log.d(TAG, "db insert ok id=$newId pkg=$pkg parsed=${parsed != null}")
+                    val withId = finalEntity.copy(id = newId)
+                    try {
+                        RawDump.appendObject(ctx, buildExternalObject(withId, rawExtrasJson))
+                        Log.d(TAG, "raw dump ok pkg=$pkg id=$newId")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "raw dump failed pkg=$pkg", e)
+                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "db insert failed pkg=$pkg", e)

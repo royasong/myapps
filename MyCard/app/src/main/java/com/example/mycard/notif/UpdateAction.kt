@@ -67,11 +67,11 @@ object UpdateAction {
             }
 
             val finalEntity = if (parseResult != null) {
-                parsed++
                 entity.copy(
                     amount = parseResult.amount,
                     merchant = parseResult.merchant,
-                    parsedAt = System.currentTimeMillis()
+                    parsedAt = System.currentTimeMillis(),
+                    filterId = parseResult.filterId
                 )
             } else {
                 if (onWhitelist) {
@@ -82,8 +82,13 @@ object UpdateAction {
             }
 
             try {
-                dao.insert(finalEntity)
-                rebuilt++
+                val newId = dao.insert(finalEntity)
+                if (newId == -1L) {
+                    Log.d(TAG, "rebuildFromRaw[$idx]: dedupe-ignored pkg=${entity.pkg} ts=${entity.ts}")
+                } else {
+                    rebuilt++
+                    if (parseResult != null) parsed++
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "rebuildFromRaw[$idx]: insert failed id=${entity.id}", e)
             }

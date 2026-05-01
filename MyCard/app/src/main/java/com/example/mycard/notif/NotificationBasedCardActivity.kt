@@ -275,10 +275,15 @@ private fun groupByCompany(
     context: android.content.Context,
     entities: List<NotificationEntity>
 ): List<CardSummaryGroup> {
-    val pkgToCompany = CardFilterStore.load(context).filters
-        .associate { it.packageName to it.cardCompany }
+    val filters = CardFilterStore.load(context).filters
+    val filterIdToCompany = filters.associate { it.id to it.cardCompany }
+    val pkgToCompany = filters.associate { it.packageName to it.cardCompany }
     return entities
-        .groupBy { pkgToCompany[it.pkg] ?: it.pkg }
+        .groupBy {
+            it.filterId?.let { fid -> filterIdToCompany[fid] }
+                ?: pkgToCompany[it.pkg]
+                ?: it.pkg
+        }
         .map { (company, items) ->
             CardSummaryGroup(
                 cardCompany = company,
