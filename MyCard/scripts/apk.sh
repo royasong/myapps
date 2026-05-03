@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Minseo3 APK 매니저 — 연결된 adb 디바이스에 APK 설치 / 제거 / logcat.
+# MyCard APK 매니저 — 연결된 adb 디바이스에 APK 설치 / 제거 / logcat.
 # Git Bash (Windows) 또는 Linux / macOS 어디에서든 실행 가능.
 #
 # 사용법:
@@ -14,8 +14,8 @@
 set -u
 
 # ── 설정 ────────────────────────────────────────────────────────────────────
-APK_FILE="${APK_FILE:-app/build/outputs/apk/debug/app-debug.apk}"
-PACKAGE="${PACKAGE:-com.example.minseo3}"
+APK_FILE="${APK_FILE:-app/build/outputs/apk/debug/MyCard.apk}"
+PACKAGE="${PACKAGE:-com.example.mycard}"
 
 # 알려진 디바이스 시리얼 → 사람 이름. 목록에 없는 기기는 getprop 모델명으로 폴백.
 declare -A DEVICE_NAMES=(
@@ -203,7 +203,7 @@ main_menu() {
   while true; do
     echo ""
     echo "┌────────────────────────────────────────────────────┐"
-    echo "│  Minseo3 APK Manager                               │"
+    echo "│  MyCard APK Manager                                │"
     echo "│  APK:     $APK_FILE"
     echo "│  Package: $PACKAGE"
     echo "├────────────────────────────────────────────────────┤"
