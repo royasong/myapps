@@ -101,3 +101,10 @@ Known quirks worth preserving awareness of:
 - 모든 핵심 분기에 로그가 있다 (`CardFilterStore`, `CardParser`, `UpdateAction`, `CardNotifListener`, `RawDump`, `RawDumpAll`).
 - `adb logcat -d --pid=$(adb shell pidof com.example.mycard) -s CardFilterStore CardParser UpdateAction CardNotifListener RawDump RawDumpAll` 한 줄로 전체 흐름 추적 가능.
 - "재구성 N/실패 N" 결과만 보고 파싱이 안 됐을 때, 가장 자주 빠지는 곳은 `CardFilterStore: ensureFileUri: no row matched`(MediaStore에서 row 못 봄) — 100% owner 격리 또는 `IS_PENDING` 문제.
+
+## Developing
+- MyCard 이하 디렉토리만 수정 가능
+- sach_dev branch를 main으로 사용
+- MainActivity.kt 의 수정사항은 최소화한다.
+- main으로 부터 sach_dev로 개발된 feature들을 가져온다.
+
