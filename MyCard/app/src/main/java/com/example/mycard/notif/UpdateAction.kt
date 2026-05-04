@@ -58,12 +58,18 @@ object UpdateAction {
                 continue
             }
 
+            val isManuallyOverridden = obj.get("manually_overridden")?.asBoolean == true
             val onWhitelist = Whitelist.contains(context, entity.pkg)
-            val parseResult = if (onWhitelist) {
-                CardParser.parse(context, entity)
-            } else {
-                Log.d(TAG, "rebuildFromRaw[$idx]: not whitelisted pkg=${entity.pkg}")
-                null
+            val parseResult = when {
+                isManuallyOverridden -> {
+                    Log.d(TAG, "rebuildFromRaw[$idx]: manually_overridden, skip reparse ts=${entity.ts}")
+                    null
+                }
+                onWhitelist -> CardParser.parse(context, entity)
+                else -> {
+                    Log.d(TAG, "rebuildFromRaw[$idx]: not whitelisted pkg=${entity.pkg}")
+                    null
+                }
             }
 
             val finalEntity = if (parseResult != null) {
@@ -74,8 +80,8 @@ object UpdateAction {
                     filterId = parseResult.filterId
                 )
             } else {
-                if (onWhitelist) {
-                    Log.d(TAG, "rebuildFromRaw[$idx]: whitelisted but parse failed pkg=${entity.pkg} ts=${entity.ts}")
+                if (!isManuallyOverridden && onWhitelist) {
+                    Log.i(TAG, "rebuildFromRaw[$idx]: whitelisted but parse failed pkg=${entity.pkg} ts=${entity.ts}")
                     skippedByParseFail++
                 }
                 entity

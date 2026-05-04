@@ -82,6 +82,37 @@ object RawDump {
         }
     }
 
+    fun removeByTs(@Suppress("UNUSED_PARAMETER") context: Context, targetTs: Long) {
+        synchronized(lock) {
+            ensureLoadedLocked()
+            val before = cache.size
+            cache.removeAll { it.get("ts")?.asLong == targetTs }
+            Log.i(TAG, "removeByTs($targetTs): $before -> ${cache.size}")
+            if (cache.size != before) writeAllLocked()
+        }
+    }
+
+    fun updateByTs(
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        targetTs: Long,
+        amount: Long,
+        merchant: String
+    ) {
+        synchronized(lock) {
+            ensureLoadedLocked()
+            val obj = cache.find { it.get("ts")?.asLong == targetTs }
+            if (obj == null) {
+                Log.w(TAG, "updateByTs($targetTs): not found in cache")
+                return
+            }
+            obj.addProperty("amount", amount)
+            obj.addProperty("merchant", merchant)
+            obj.addProperty("manually_overridden", true)
+            Log.i(TAG, "updateByTs($targetTs): amount=$amount merchant=$merchant")
+            writeAllLocked()
+        }
+    }
+
     fun invalidate() {
         synchronized(lock) {
             cache.clear()

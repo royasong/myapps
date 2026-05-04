@@ -18,7 +18,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -132,19 +131,25 @@ private fun ManualEntryScreen(onClose: () -> Unit) {
             )
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("구분:", style = MaterialTheme.typography.bodyLarge)
-                FilterChip(
-                    selected = !isCancel,
-                    onClick = { isCancel = false },
-                    label = { Text("승인") }
+                Text(
+                    text = "승인",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (!isCancel) FontWeight.Bold else FontWeight.Normal,
+                    color = if (!isCancel) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable { isCancel = false }
                 )
-                FilterChip(
-                    selected = isCancel,
-                    onClick = { isCancel = true },
-                    label = { Text("취소") }
+                Text(
+                    text = "취소",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (isCancel) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isCancel) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable { isCancel = true }
                 )
             }
 
