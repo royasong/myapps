@@ -68,6 +68,7 @@ import androidx.compose.foundation.layout.widthIn
 import com.example.mycard.ui.theme.MyCardTheme
 import com.example.mycard.sms.SMSReader
 import com.example.mycard.SettingsActivity
+import com.example.mycard.notif.ManualEntryActivity
 import com.example.mycard.notif.NotificationBasedCardActivity
 import com.example.mycard.notif.NotificationListActivity
 import com.example.mycard.notif.UpdateAction
@@ -329,11 +330,23 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                     showMenu = false
                                     coroutineScope.launch {
                                         val result = UpdateAction.rebuildFromRaw(context)
+                                        context.sendBroadcast(
+                                            Intent(SmsReceiver.ACTION_SMS_UPDATED)
+                                                .setPackage(context.packageName)
+                                        )
                                         snackbarHostState.showSnackbar(
                                             "재구성 ${result.rebuilt}건 / 파싱 ${result.parsed}건 / " +
                                                 "blacklist ${result.skippedByBlacklist}건 / 파싱실패 ${result.skippedByParseFail}건"
                                         )
                                     }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("항목 추가") },
+                                onClick = {
+                                    showMenu = false
+                                    val intent = android.content.Intent(context, ManualEntryActivity::class.java)
+                                    context.startActivity(intent)
                                 }
                             )
                             DropdownMenuItem(

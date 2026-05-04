@@ -118,7 +118,11 @@ object UpdateAction {
                 subText = obj.get("subText")?.asString.orEmpty(),
                 category = obj.get("category")?.asString.orEmpty(),
                 channelId = obj.get("channelId")?.asString.orEmpty(),
-                rawExtras = obj.get("rawExtras")?.asString ?: "{}"
+                rawExtras = obj.get("rawExtras")?.asString ?: "{}",
+                amount = obj.get("amount")?.takeIf { !it.isJsonNull }?.asLong,
+                merchant = obj.get("merchant")?.takeIf { !it.isJsonNull }?.asString,
+                parsedAt = obj.get("parsedAt")?.takeIf { !it.isJsonNull }?.asLong,
+                filterId = obj.get("filterId")?.takeIf { !it.isJsonNull }?.asString
             )
         } catch (e: Exception) {
             Log.w(TAG, "parseObject failed", e)

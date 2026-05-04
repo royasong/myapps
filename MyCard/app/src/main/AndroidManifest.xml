@@ -43,6 +43,11 @@
             android:exported="false"
             android:label="알림 기반 보기"
             android:theme="@style/Theme.MyCard" />
+        <activity
+            android:name=".notif.ManualEntryActivity"
+            android:exported="false"
+            android:label="항목 추가"
+            android:theme="@style/Theme.MyCard" />
 
         <service
             android:name=".notif.CardNotificationListener"
