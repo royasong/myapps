@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    android:orientation="vertical"
+    android:id="@+id/activity_setting"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:theme="@style/Theme.AppCompat.DayNight.DarkActionBar"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    tools:context=".SettingActivity">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/colorPrimary"
+        android:titleTextColor="@color/colorOnPrimary" />
+    <Button
+        android:id="@+id/btn_bgColor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="배경색설정하기" />
+
+    <Button
+        android:id="@+id/btn_buttonColor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="버튼색 설정하기" />
+    <Button
+        android:id="@+id/btn_bgImage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="배경이미지설정하기" />
+    <Button
+        android:id="@+id/btn_close"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="close" />
+
+    <ImageView
+        android:id="@+id/imageView_bg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:srcCompat="@drawable/ham" />
+
+</LinearLayout>
