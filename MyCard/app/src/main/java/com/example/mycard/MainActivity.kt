@@ -76,6 +76,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.Instant
 import android.util.Log
+import androidx.compose.ui.text.style.TextDecoration
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -452,22 +453,25 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = item.date,
-                                                    fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     style = MaterialTheme.typography.bodySmall,
+                                                    textDecoration = if (isTodayItem) TextDecoration.Underline else TextDecoration.None,
+                                                    fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(
                                                     modifier = Modifier.widthIn(max = halfScreenWidth),
                                                     text = extractBodyText(item.body),
-                                                    fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     style = MaterialTheme.typography.bodySmall,
+                                                    textDecoration = if (isTodayItem) TextDecoration.Underline else TextDecoration.None,
+                                                    fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                             Column(horizontalAlignment = Alignment.End) {
                                                 Text(
-                                                    text = "⭐ " + typeText ,
+                                                    text = typeText,
                                                     style = MaterialTheme.typography.bodySmall,
+                                                    textDecoration = if (isTodayItem) TextDecoration.Underline else TextDecoration.None,
                                                     fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     color = if (isCancel)
                                                         MaterialTheme.colorScheme.error
@@ -476,9 +480,9 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                                 )
                                                 Text(
                                                     text = "%,d원".format(displayAmount),
-
-                                                    style = MaterialTheme.typography.bodyMedium,
                                                     fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
+                                                    textDecoration = if (isTodayItem) TextDecoration.Underline else TextDecoration.None,
+                                                    style = MaterialTheme.typography.bodyMedium,
                                                     color = if (isCancel)
                                                         MaterialTheme.colorScheme.error
                                                     else
