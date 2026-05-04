@@ -375,9 +375,9 @@ public class SMSReader {
     }
 
     /**
-     * 본문에 등장하는 4글자 마스킹 카드번호 후보 토큰 중 하나라도, 사용자가 입력한 last4(예: "9207")와
+     * 본문에 등장하는 4글자 마스킹 카드번호 후보 토큰 중 하나라도, 사용자가 입력한 last4(예: "2222")와
      * 자릿수별로 일치하는지 검사. 마스킹 토큰의 '*' 위치는 wildcard로 간주한다.
-     * 예) masked="0*7*", last4="0179" → pos0 '0'='0', pos1 '*' wild, pos2 '7'='7', pos3 '*' wild → match.
+     * 예) masked="0*7*", last4="1111" → pos0 '0'='0', pos1 '*' wild, pos2 '7'='7', pos3 '*' wild → match.
      */
     private static boolean maskedCardLast4Matches(String text, String last4) {
         if (last4 == null || last4.length() != 4 || text == null) return false;

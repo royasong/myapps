@@ -19,7 +19,7 @@
 
 `NotificationListenerService`는 둘 다 잡으므로 그대로 DB에 적재되고, 합계가 **2배로 잡히는** 영향이 있었습니다.
 
-또한, 같은 패키지(`com.hanaskcard.paycla`)에 카드 두 장(브로드 0179, 매직 9207)이 등록되어 있을 때 `groupByCompany`가 패키지 단위로 매핑하여 **두 카드가 한 그룹으로 합쳐지는** 별개 버그도 함께 확인됐습니다.
+또한, 같은 패키지(`com.hanaskcard.paycla`)에 카드 두 장(브로드 1111, 매직 2222)이 등록되어 있을 때 `groupByCompany`가 패키지 단위로 매핑하여 **두 카드가 한 그룹으로 합쳐지는** 별개 버그도 함께 확인됐습니다.
 
 ## 해결
 
@@ -81,7 +81,7 @@ baseEntity.copy(
 }
 ```
 
-이제 같은 패키지의 0179/9207이 각자의 `cardCompany`("하나 브로드 0179", "하나 매직 9207")로 분리 표시됩니다.
+이제 같은 패키지의 1111/2222이 각자의 `cardCompany`("하나 브로드 1111", "하나 매직 2222")로 분리 표시됩니다.
 
 ## DB 마이그레이션 정책
 
@@ -95,7 +95,7 @@ baseEntity.copy(
 빌드 + 설치 후:
 1. 메뉴 3 (업데이트) 실행 → `rebuilt=14 parsed=10 skipBL=3 skipParseFail=3` (raw 14개 객체 → dedupe + 매칭).
 2. 합계가 2배로 잡히지 않음 (191,000원 1건만 적재).
-3. "하나 브로드 0179" / "하나 매직 9207" 두 그룹으로 분리 표시.
+3. "하나 브로드 1111" / "하나 매직 2222" 두 그룹으로 분리 표시.
 
 로그 확인 한 줄:
 ```
@@ -104,7 +104,7 @@ adb logcat -d --pid=$(adb shell pidof com.example.mycard) -s CardFilterStore Car
 
 ## 함께 추가된 파일
 
-`MyCard/docs/data/하나카드.jsonl` — 0179/9207 결제 알림 raw 6건 (dedupe 검증 코퍼스로 활용). 카드사 단위 raw 아카이브 정책에 따름 (`MyCard/CLAUDE.md` 참고).
+`MyCard/docs/data/하나카드.jsonl` — 1111/2222 결제 알림 raw 6건 (dedupe 검증 코퍼스로 활용). 카드사 단위 raw 아카이브 정책에 따름 (`MyCard/CLAUDE.md` 참고).
 
 ## 알려진 한계
 
