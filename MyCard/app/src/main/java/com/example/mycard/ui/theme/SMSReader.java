@@ -128,17 +128,13 @@ public class SMSReader {
                                 // URI 간 중복 제거
                                 String dedupKey = address + "_" + timeStamp;
                                 if (!seenKeys.add(dedupKey)) continue;
-                                Log.d("ROYA::origni",body);
                                 if (body.contains("하나") && isRcs) {
                                     String r = RcsParser.parse(body);
                                     if (!r.isEmpty()) {
                                         body = r + " " + configId.trim();
                                     }
                                 }
-
-                                Log.d("ROYA",body);
                                 if (!body.contains("[Web발신]")) {
-                                    Log.d("ROYA","!body.contains(\"[Web발신]\")");
                                     continue;
                                 }
 
@@ -147,7 +143,6 @@ public class SMSReader {
                                 String trimmedBody = body.replaceFirst("\\[Web발신\\]\\s*", "").replaceAll("\\s+", "");
 
                                 if (!trimmedBody.contains(configId.trim())) {
-                                    Log.d("ROYA","trimmedBody.contains(configId.trim()" + configId.trim() + " " + trimmedBody);
                                     continue;
                                 }
 
@@ -160,7 +155,6 @@ public class SMSReader {
                                 boolean hasAmount = Pattern.compile("\\d[\\d,]*원").matcher(processedBody).find();
 
                                 if (!hasApproval && !hasCancel && !hasAmount) {
-                                    Log.d("ROYA","amountMatcher.find() continue");
                                     continue;
                                 }
 
@@ -169,7 +163,6 @@ public class SMSReader {
                                 Pattern amountPattern = isCancel ? CANCEL_AMOUNT_PATTERN : AMOUNT_PATTERN;
                                 Matcher amountMatcher = amountPattern.matcher(processedBody);
                                 if (!amountMatcher.find()) {
-                                    Log.d("ROYA","amountMatcher.find() continue");
                                     continue;
                                 }
                                 long amount = Long.parseLong(amountMatcher.group(1).replace(",", ""));

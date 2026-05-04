@@ -77,13 +77,13 @@ class CardRefreshWorker(
             
             // 내부 저장소
             val internalFile = File(context.getExternalFilesDir(null), fileName)
-            internalFile.writeText(content, Charsets.UTF_8)
+            internalFile.writeText(content, Charsets.UTF_16)
             
             // Document 영역
             val docsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
             if (docsDir != null) {
                 val docFile = File(docsDir, fileName)
-                docFile.writeText(content, Charsets.UTF_8)
+                docFile.writeText(content, Charsets.UTF_16)
             }
             
             Result.success()

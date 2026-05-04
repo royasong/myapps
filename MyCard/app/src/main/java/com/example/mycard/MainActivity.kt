@@ -71,6 +71,12 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.time.Instant
+import android.util.Log
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -229,7 +235,17 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             CardWidgetProvider.updateAppWidget(context, appWidgetManager, widgetId)
         }
     }
+    fun isToday(dateString: String): Boolean {
+        return try {
+            val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            val itemDate = LocalDateTime.parse(dateString, formatter).toLocalDate()
+            val today = LocalDate.now()
 
+            itemDate == today
+        } catch (e: Exception) {
+            false
+        }
+    }
     // 데이터 새로고침 함수
     fun refreshData() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
@@ -422,6 +438,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                         val displayAmount =
                                             if (isCancel) -item.amount else item.amount
                                         val typeText = if (isCancel) "취소" else "승인"
+                                        val isTodayItem = isToday(item.date)
 
                                         Row(
                                             modifier = Modifier
@@ -435,21 +452,23 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = item.date,
+                                                    fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(
                                                     modifier = Modifier.widthIn(max = halfScreenWidth),
                                                     text = extractBodyText(item.body),
+                                                    fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                             Column(horizontalAlignment = Alignment.End) {
                                                 Text(
-                                                    text = typeText,
+                                                    text = "⭐ " + typeText ,
                                                     style = MaterialTheme.typography.bodySmall,
-                                                    fontWeight = FontWeight.Medium,
+                                                    fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     color = if (isCancel)
                                                         MaterialTheme.colorScheme.error
                                                     else
@@ -457,8 +476,9 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                                 )
                                                 Text(
                                                     text = "%,d원".format(displayAmount),
+
                                                     style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Medium,
+                                                    fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
                                                     color = if (isCancel)
                                                         MaterialTheme.colorScheme.error
                                                     else
