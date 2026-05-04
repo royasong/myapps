@@ -4,6 +4,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
+import android.util.Log;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -18,6 +19,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class SMSReader {
 
@@ -61,7 +64,8 @@ public class SMSReader {
 
     // 조회할 받은 문자함 URI 목록
     private static final List<Uri> INBOX_URIS = Arrays.asList(
-            Uri.parse("content://im/chat")
+            Uri.parse("content://im/chat"),
+            Uri.parse("content://sms/inbox")
     );
 
     public static List<SmsGroup> readCardApprovalGrouped(Context context) {
@@ -114,7 +118,7 @@ public class SMSReader {
                                 if (idx >= 0) { bodyIdx = idx; break; }
                             }
                             if (addrIdx < 0 || dateIdx < 0 || bodyIdx < 0) continue;
-
+                            String[] columnNames = c.getColumnNames();
                             while (c.moveToNext()) {
                                 String address = c.getString(addrIdx);
                                 long timeStamp = c.getLong(dateIdx);
@@ -124,14 +128,28 @@ public class SMSReader {
                                 // URI 간 중복 제거
                                 String dedupKey = address + "_" + timeStamp;
                                 if (!seenKeys.add(dedupKey)) continue;
+                                Log.d("ROYA::origni",body);
+                                if (body.contains("하나") && isRcs) {
+                                    String r = RcsParser.parse(body);
+                                    if (!r.isEmpty()) {
+                                        body = r + " " + configId.trim();
+                                    }
+                                }
 
-                                // [Web발신] 미포함 메시지 제외
-                                if (!body.contains("[Web발신]")) continue;
+                                Log.d("ROYA",body);
+                                if (!body.contains("[Web발신]")) {
+                                    Log.d("ROYA","!body.contains(\"[Web발신]\")");
+                                    continue;
+                                }
+
 
                                 // [Web발신] 이후 모든 공백 제거
                                 String trimmedBody = body.replaceFirst("\\[Web발신\\]\\s*", "").replaceAll("\\s+", "");
 
-                                if (!trimmedBody.contains(configId.trim())) continue;
+                                if (!trimmedBody.contains(configId.trim())) {
+                                    Log.d("ROYA","trimmedBody.contains(configId.trim()" + configId.trim() + " " + trimmedBody);
+                                    continue;
+                                }
 
                                 // "자동결제" 또는 "자동 결제" → "승인"으로 대체
                                 String processedBody = trimmedBody.replace("자동결제", "승인").replace("자동 결제", "승인");
@@ -141,13 +159,19 @@ public class SMSReader {
                                 boolean hasCancel = processedBody.contains("취소");
                                 boolean hasAmount = Pattern.compile("\\d[\\d,]*원").matcher(processedBody).find();
 
-                                if (!hasApproval && !hasCancel && !hasAmount) continue;
+                                if (!hasApproval && !hasCancel && !hasAmount) {
+                                    Log.d("ROYA","amountMatcher.find() continue");
+                                    continue;
+                                }
 
                                 boolean isCancel = processedBody.contains("취소");
 
                                 Pattern amountPattern = isCancel ? CANCEL_AMOUNT_PATTERN : AMOUNT_PATTERN;
                                 Matcher amountMatcher = amountPattern.matcher(processedBody);
-                                if (!amountMatcher.find()) continue;
+                                if (!amountMatcher.find()) {
+                                    Log.d("ROYA","amountMatcher.find() continue");
+                                    continue;
+                                }
                                 long amount = Long.parseLong(amountMatcher.group(1).replace(",", ""));
 
                                 long finalAmount = isCancel ? -amount : amount;
