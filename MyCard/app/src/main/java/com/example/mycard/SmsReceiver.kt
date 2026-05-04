@@ -6,8 +6,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import com.example.mycard.sms.SMSReader
+import com.example.mycard.notif.readNotifCardGroups
 import com.example.mycard.widget.CardWidgetProvider
+import kotlinx.coroutines.runBlocking
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,7 +56,7 @@ class SmsReceiver : BroadcastReceiver() {
 
         fun refreshAndNotify(context: Context) {
             try {
-                val groups = SMSReader.readCardApprovalGrouped(context)
+                val groups = runBlocking { readNotifCardGroups(context) }
                 val grandTotal = groups.sumOf { it.totalAmount }
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA).format(Date())
                 val totalCount = groups.sumOf { it.items.size }
