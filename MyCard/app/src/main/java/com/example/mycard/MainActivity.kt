@@ -155,12 +155,12 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     LaunchedEffect(shouldRefresh) {
         if (shouldRefresh && permissionGranted) {
             groups = readNotifCardGroups(context)
-            
+
             // 위젷 업데이트
             val grandTotal = groups.sumOf { it.totalAmount }
             val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
             prefs.edit().putLong("widget_total", grandTotal).apply()
-            
+
             val groupsJson = StringBuilder("[")
             groups.forEachIndexed { index, group ->
                 groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
@@ -168,7 +168,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             }
             groupsJson.append("]")
             prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
-            
+
             val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
             val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
             val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)

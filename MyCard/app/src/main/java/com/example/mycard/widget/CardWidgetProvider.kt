@@ -84,15 +84,16 @@ class CardWidgetProvider : AppWidgetProvider() {
 
             views.setTextViewText(R.id.widget_groups_text, groupsText.toString())
 
-            // 위젯 클릭 시 앱 실행
-            /*
-            val intent = Intent(context, MainActivity::class.java)
-            val pendingIntent = android.app.PendingIntent.getActivity(
-                context, 0, intent,
+            // 위젯 컨테이너 클릭 시 앱 실행
+            val launchIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val launchPendingIntent = android.app.PendingIntent.getActivity(
+                context, 0, launchIntent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
             )
-            views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
-            */
+            views.setOnClickPendingIntent(R.id.widget_container, launchPendingIntent)
+
             // 새로고침 버튼 클릭 시 브로드캐스트 전송
             val refreshIntent = Intent("com.example.mycard.WIDGET_REFRESH").apply {
                 setPackage(context.packageName)
@@ -102,7 +103,6 @@ class CardWidgetProvider : AppWidgetProvider() {
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE
             )
             views.setOnClickPendingIntent(R.id.widget_refresh_btn, refreshPendingIntent)
-            views.setOnClickPendingIntent(R.id.widget_container, refreshPendingIntent)
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }

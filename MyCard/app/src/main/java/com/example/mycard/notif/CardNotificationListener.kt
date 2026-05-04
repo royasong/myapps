@@ -1,9 +1,11 @@
 package com.example.mycard.notif
 
 import android.app.Notification
+import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import com.example.mycard.SmsReceiver
 import com.example.mycard.notif.db.NotificationDatabase
 import com.example.mycard.notif.db.NotificationEntity
 import com.example.mycard.parser.CardParser
@@ -85,6 +87,12 @@ class CardNotificationListener : NotificationListenerService() {
                         Log.d(TAG, "raw dump ok pkg=$pkg id=$newId")
                     } catch (e: Exception) {
                         Log.w(TAG, "raw dump failed pkg=$pkg", e)
+                    }
+                    if (parsed != null) {
+                        ctx.sendBroadcast(
+                            Intent(SmsReceiver.ACTION_SMS_UPDATED).setPackage(ctx.packageName)
+                        )
+                        Log.d(TAG, "broadcast SMS_UPDATED sent pkg=$pkg id=$newId")
                     }
                 }
             } catch (e: Exception) {
