@@ -132,3 +132,8 @@ Only `READ_SMS` is declared. `MainActivity` requests it at runtime; **the Widget
 3. **순서대로 cherry-pick** — `git cherry-pick <oldest>^..<newest>` 한 번으로 범위 적용. 충돌은 발생 즉시 멈추고 사용자에게 어느 쪽을 채택할지 보여주고 진행. 자동 머지된 파일은 conflict marker만 빠르게 검사하고 통과.
 4. **import 충돌은 기본적으로 HEAD 측을 유지** — 우리 라인이 더 많은 기능(coroutines, SimpleDateFormat 등)을 쓰고 있을 가능성이 높음. 미사용 import가 섞여도 컴파일은 깨지지 않음. 새 기능 호출 자체(예: `scheduleDailyRefresh()`)는 main 측을 채택.
 5. **빌드 확인은 명시 요청 시에만 돌린다.** 기본은 cherry-pick 결과만 보고하고, 사용자가 "빌드해줘"라고 하면 `./gradlew assembleDebug`로 확인.
+
+## Development rules
+1. MyCard 이하 폴더만 수정한다.
+2. 개발 branch의 main은 "sach_dev" 이다. PR 생성시에도 sach_dev branch로 merge하는 것을 목표로 한다.
+3. MainActivity.kt의 수정은 최소한다.
