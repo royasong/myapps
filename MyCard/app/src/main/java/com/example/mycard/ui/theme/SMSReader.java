@@ -123,7 +123,7 @@ public class SMSReader {
                                 String address = c.getString(addrIdx);
                                 long timeStamp = c.getLong(dateIdx);
                                 String body = c.getString(bodyIdx);
-                                if (body == null) continue;
+                                if (body == null ||!body.contains("[Web발신]")) continue;
 
                                 // URI 간 중복 제거
                                 String dedupKey = address + "_" + timeStamp;
@@ -135,11 +135,6 @@ public class SMSReader {
                                     }
                                 }
                                 //body= "[Web발신]  [삼성카드]5429  자동결제 04/10접수 LGU+  통신(444074) 22,250원";
-                                if (!body.contains("[Web발신]")) {
-                                    continue;
-                                }
-
-
                                 // [Web발신] 이후 모든 공백 제거
                                 String trimmedBody = body.replaceFirst("\\[Web발신\\]\\s*", "").replaceAll("\\s+", "");
                                 if (configId.contains("/")) {

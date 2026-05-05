@@ -388,6 +388,8 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                     // ID별 그룹 (클릭 시 expand/collapse)
                     items(groups) { group ->
                         val isExpanded = expandedGroups.contains(group.id)
+                        val totalItemCount = group.items.size
+                        val todayItemCount = group.items.count { isToday(it.date) }
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -410,12 +412,19 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = group.id,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
+                                    Column {
+                                        Text(
+                                            text = group.id,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                        Text(
+                                            text = "오늘 $todayItemCount / 전체 $totalItemCount",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
                                             text = "%,d원".format(group.totalAmount),
