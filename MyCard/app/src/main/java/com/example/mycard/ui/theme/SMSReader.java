@@ -60,7 +60,7 @@ public class SMSReader {
 
     // 기본 금액 패턴 (자동결제 등 "승인"/"취소" 없는 경우)
     private static final Pattern DEFAULT_AMOUNT_PATTERN =
-            Pattern.compile("(\\d[\\d,]*)원");
+            Pattern.compile(".*?(\\d[\\d,]*)원");
 
     // 조회할 받은 문자함 URI 목록
     private static final List<Uri> INBOX_URIS = Arrays.asList(
@@ -134,6 +134,7 @@ public class SMSReader {
                                         body = r + " " + configId.trim();
                                     }
                                 }
+                                //body= "[Web발신]  [삼성카드]5429  자동결제 04/10접수 LGU+  통신(444074) 22,250원";
                                 if (!body.contains("[Web발신]")) {
                                     continue;
                                 }
@@ -141,14 +142,22 @@ public class SMSReader {
 
                                 // [Web발신] 이후 모든 공백 제거
                                 String trimmedBody = body.replaceFirst("\\[Web발신\\]\\s*", "").replaceAll("\\s+", "");
-
-                                if (!trimmedBody.contains(configId.trim())) {
-                                    continue;
+                                if (configId.contains("/")) {
+                                    String[] cardparts = configId.split("/");
+                                    String cardcompany = cardparts[0].trim();
+                                    String cardid = cardparts[1].trim();
+                                    if (!trimmedBody.contains(cardcompany) || !trimmedBody.contains(cardid)) {
+                                        continue;
+                                    }
+                                    configId = cardcompany + cardid;
+                                } else {
+                                    if (!trimmedBody.contains(configId.trim())) {
+                                        continue;
+                                    }
                                 }
-
+                                /////
                                 // "자동결제" 또는 "자동 결제" → "승인"으로 대체
                                 String processedBody = trimmedBody.replace("자동결제", "승인").replace("자동 결제", "승인");
-
                                 // "승인", "취소", 또는 금액(숫자+원)이 포함된 문자만
                                 boolean hasApproval = processedBody.contains("승인");
                                 boolean hasCancel = processedBody.contains("취소");
@@ -160,9 +169,10 @@ public class SMSReader {
 
                                 boolean isCancel = processedBody.contains("취소");
 
-                                Pattern amountPattern = isCancel ? CANCEL_AMOUNT_PATTERN : AMOUNT_PATTERN;
+                                Pattern amountPattern = DEFAULT_AMOUNT_PATTERN;//isCancel ? CANCEL_AMOUNT_PATTERN : AMOUNT_PATTERN;
                                 Matcher amountMatcher = amountPattern.matcher(processedBody);
                                 if (!amountMatcher.find()) {
+                                    Log.d("ROYA", "!amountMatcher.find() ");
                                     continue;
                                 }
                                 long amount = Long.parseLong(amountMatcher.group(1).replace(",", ""));

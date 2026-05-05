@@ -63,7 +63,7 @@ private fun saveMemoToDocuments(context: Context, text: String) {
             put(MediaStore.Files.FileColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/")
         }
         val uri = resolver.insert(collection, values) ?: return
-        resolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+        resolver.openOutputStream(uri)?.use { it.write(text.toByteArray(Charsets.UTF_16)) }
     } catch (e: Exception) {
         e.printStackTrace()
     }
