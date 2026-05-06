@@ -62,7 +62,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.widthIn
 import com.example.mycard.ui.theme.MyCardTheme
-import com.example.mycard.ui.theme.SMSReader
+import com.example.mycard.sms.SMSReader
 import com.example.mycard.SettingsActivity
 import com.example.mycard.widget.CardWidgetProvider
 import java.util.Calendar

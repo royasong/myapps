@@ -1,4 +1,4 @@
-package com.example.mycard.ui.theme;
+package com.example.mycard.sms;
 
 
 import android.util.Log;

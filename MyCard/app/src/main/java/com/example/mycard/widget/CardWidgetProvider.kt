@@ -8,7 +8,7 @@ import android.content.Intent
 import android.widget.RemoteViews
 import com.example.mycard.R
 import com.example.mycard.MainActivity
-import com.example.mycard.ui.theme.SMSReader
+import com.example.mycard.sms.SMSReader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

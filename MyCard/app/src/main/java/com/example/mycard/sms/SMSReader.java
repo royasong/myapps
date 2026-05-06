@@ -1,4 +1,4 @@
-package com.example.mycard.ui.theme;
+package com.example.mycard.sms;
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -219,20 +219,20 @@ public class SMSReader {
     private static String findCardIdByPhone(String phone, String body, String[] cardGroups) {
         String lowerBody = body.toLowerCase();
         String firstMatchId = null;
-        
+
         for (String group : cardGroups) {
             String trimmed = group.trim();
             if (trimmed.isEmpty()) continue;
-            
+
             String[] parts = trimmed.split(",");
             if (parts.length >= 2) {
                 String configPhone = parts[0].trim();
                 String configId = parts[1].trim();
                 String keyword = parts.length >= 3 ? parts[2].trim().toLowerCase() : "";
-                
+
                 // 전화번호 매칭 (부분 일치)
                 boolean phoneMatch = phone.contains(configPhone) || configPhone.contains(phone);
-                
+
                 if (phoneMatch) {
                     // 구분 키워드가 있으면 본문에서 확인
                     if (!keyword.isEmpty()) {
@@ -250,7 +250,7 @@ public class SMSReader {
                 }
             }
         }
-        
+
         // 키워드가 있는 경우, 매칭되는 키워드가 없으면 첫 번째 매칭 반환
         return firstMatchId;
     }
