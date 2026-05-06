@@ -1,4 +1,4 @@
-package com.example.mycard
+﻿package com.example.mycard
 
 import android.content.ContentUris
 import android.content.ContentValues
@@ -148,7 +148,7 @@ fun SettingsScreen(onSave: () -> Unit, onCancel: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(120.dp),
-                placeholder = { Text("예: 스타벅스\n쿠팡\n네이버") }
+                placeholder = { Text("예: 스타벅스\n테스트가맹점\n네이버") }
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(

@@ -1,4 +1,4 @@
-package com.example.mycard
+﻿package com.example.mycard
 
 import android.Manifest
 import android.content.BroadcastReceiver
@@ -35,6 +35,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -50,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +68,18 @@ import androidx.compose.foundation.layout.widthIn
 import com.example.mycard.ui.theme.MyCardTheme
 import com.example.mycard.sms.SMSReader
 import com.example.mycard.SettingsActivity
+import com.example.mycard.notif.ManualEntryActivity
+import com.example.mycard.notif.NotificationBasedCardActivity
+import com.example.mycard.notif.NotificationListActivity
+import com.example.mycard.notif.UpdateAction
+import com.example.mycard.notif.readNotifCardGroups
+import com.example.mycard.storage.AppStorage
 import com.example.mycard.widget.CardWidgetProvider
+import kotlinx.coroutines.launch
+import android.os.Environment
+import androidx.documentfile.provider.DocumentFile
+import java.io.File
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -142,17 +157,19 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     var permissionGranted by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var expandedGroups by remember { mutableStateOf(setOf<String>()) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     // 위젯에서 새로고침 요청 시 데이터 갱신
     LaunchedEffect(shouldRefresh) {
         if (shouldRefresh && permissionGranted) {
-            groups = SMSReader.readCardApprovalGrouped(context)
-            
+            groups = readNotifCardGroups(context)
+
             // 위젷 업데이트
             val grandTotal = groups.sumOf { it.totalAmount }
             val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
             prefs.edit().putLong("widget_total", grandTotal).apply()
-            
+
             val groupsJson = StringBuilder("[")
             groups.forEachIndexed { index, group ->
                 groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
@@ -160,7 +177,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             }
             groupsJson.append("]")
             prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
-            
+
             val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
             val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
             val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
@@ -175,7 +192,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
                     == PackageManager.PERMISSION_GRANTED
                 ) {
-                    groups = SMSReader.readCardApprovalGrouped(context)
+                    coroutineScope.launch { groups = readNotifCardGroups(context) }
                 }
             }
         }
@@ -188,10 +205,12 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        val readGranted = results[Manifest.permission.READ_SMS] == true
+    ) { _ ->
+        val readGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.READ_SMS
+        ) == PackageManager.PERMISSION_GRANTED
         permissionGranted = readGranted
-        if (readGranted) groups = SMSReader.readCardApprovalGrouped(context)
+        if (readGranted) coroutineScope.launch { groups = readNotifCardGroups(context) }
     }
 
     LaunchedEffect(Unit) {
@@ -199,13 +218,25 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         val receiveGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
         if (readGranted) {
             permissionGranted = true
-            groups = SMSReader.readCardApprovalGrouped(context)
+            groups = readNotifCardGroups(context)
         }
         val missing = buildList {
             if (!readGranted) add(Manifest.permission.READ_SMS)
             if (!receiveGranted) add(Manifest.permission.RECEIVE_SMS)
         }
         if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+
+        if (!AppStorage.hasAllFilesAccess()) {
+            coroutineScope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = "외부 저장 권한 필요 (설정에서 토글하세요)",
+                    actionLabel = "설정"
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    (context as? android.app.Activity)?.let { AppStorage.openAllFilesAccessSettings(it) }
+                }
+            }
+        }
     }
 
     // 총액이 변경되면 위젷 업데이트
@@ -253,25 +284,8 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
             == PackageManager.PERMISSION_GRANTED
         ) {
-            groups = SMSReader.readCardApprovalGrouped(context)
-
-            val grandTotal = groups.sumOf { it.totalAmount }
-            val prefs = context.getSharedPreferences("mycard_prefs", Context.MODE_PRIVATE)
-            prefs.edit().putLong("widget_total", grandTotal).apply()
-
-            val groupsJson = StringBuilder("[")
-            groups.forEachIndexed { index, group ->
-                groupsJson.append("{\"id\":\"${group.id}\",\"total\":${group.totalAmount}}")
-                if (index < groups.size - 1) groupsJson.append(",")
-            }
-            groupsJson.append("]")
-            prefs.edit().putString("widget_groups", groupsJson.toString()).apply()
-
-            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-            val widgetComponentName = android.content.ComponentName(context, CardWidgetProvider::class.java)
-            val widgetIds = appWidgetManager.getAppWidgetIds(widgetComponentName)
-            for (widgetId in widgetIds) {
-                CardWidgetProvider.updateAppWidget(context, appWidgetManager, widgetId)
+            coroutineScope.launch {
+                groups = readNotifCardGroups(context)
             }
         } else {
             permissionLauncher.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
@@ -282,6 +296,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     val todayCount = groups.sumOf { group -> group.items.count { isToday(it.date) } }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -315,6 +330,47 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                 onClick = {
                                     showMenu = false
                                     val intent = android.content.Intent(context, SettingsActivity::class.java)
+                                    context.startActivity(intent)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("알림 로그") },
+                                onClick = {
+                                    showMenu = false
+                                    val intent = android.content.Intent(context, NotificationListActivity::class.java)
+                                    context.startActivity(intent)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("업데이트") },
+                                onClick = {
+                                    showMenu = false
+                                    coroutineScope.launch {
+                                        val result = UpdateAction.rebuildFromRaw(context)
+                                        context.sendBroadcast(
+                                            Intent(SmsReceiver.ACTION_SMS_UPDATED)
+                                                .setPackage(context.packageName)
+                                        )
+                                        snackbarHostState.showSnackbar(
+                                            "재구성 ${result.rebuilt}건 / 파싱 ${result.parsed}건 / " +
+                                                "blacklist ${result.skippedByBlacklist}건 / 파싱실패 ${result.skippedByParseFail}건"
+                                        )
+                                    }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("항목 추가") },
+                                onClick = {
+                                    showMenu = false
+                                    val intent = android.content.Intent(context, ManualEntryActivity::class.java)
+                                    context.startActivity(intent)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("알림 기반 보기") },
+                                onClick = {
+                                    showMenu = false
+                                    val intent = android.content.Intent(context, NotificationBasedCardActivity::class.java)
                                     context.startActivity(intent)
                                 }
                             )
