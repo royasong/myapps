@@ -18,6 +18,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `/ship`, `/br-pr` 등 PR 생성 시 base 선택 옵션이 나오면 자동으로 sach_dev 선택.
 - 이미 PR이 main을 base로 만들어졌으면 `gh pr edit <num> --base sach_dev`로 즉시 옮긴다.
 
+**Ship 시 새 feature branch 생성 규칙:**
+- `/ship`을 실행할 때 현재 브랜치가 `sach_dev`이면 **sach_dev에 직접 push/commit 하지 않는다**. 먼저 작업 내용을 옮길 새 feature branch(예: `feature/<topic>`)를 만들고 거기서 PR을 sach_dev로 올린다.
+- 절차:
+  1. 현재 sach_dev에 staged/uncommitted 변경이 있으면 임시로 stash하거나 그대로 둔다.
+  2. `git checkout -b feature/<topic> sach_dev` (필요 시 마지막 N개 commit을 옮길 경우 `git reset --keep <base>` 등으로 sach_dev를 되돌려 둔다 — 사용자 승인 후).
+  3. `/ship`이 PR을 만들 때 base는 `sach_dev`.
+- 이미 sach_dev에 commit이 들어가 있다면 사용자에게 보고하고 — (a) 그대로 두고 다음 작업부터 규칙 적용 (b) cherry-pick으로 새 branch에 옮기고 sach_dev를 reset 중 선택을 받는다. 임의로 sach_dev를 reset하지 않는다.
+
 ## What this app does
 
 Reads the device's SMS inbox, filters this-month `[Web발신]` card-approval messages by user-configured `phone,id[,keyword]` rules, groups them by id, sums approvals minus cancellations, and surfaces the totals in:
