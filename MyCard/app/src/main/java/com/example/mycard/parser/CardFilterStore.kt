@@ -33,10 +33,8 @@ object CardFilterStore {
                 Log.i(TAG, "load: loaded filters=${parsed.filters.size} pkgs=${byPkgIndex.keys}")
                 return parsed
             }
-            Log.w(TAG, "load: no readable file, bootstrapping empty CardFiltersFile so user can target it via adb push")
-            val empty = CardFiltersFile()
-            saveAll(context, empty)
-            return cached ?: empty
+            Log.w(TAG, "load: read failed (file missing or no permission), returning empty without caching; will retry on next call")
+            return CardFiltersFile()
         }
     }
 
