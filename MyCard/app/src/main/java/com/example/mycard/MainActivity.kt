@@ -77,6 +77,7 @@ import java.time.format.DateTimeFormatter
 import java.time.Instant
 import android.util.Log
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -415,20 +416,20 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                     Column {
                                         Text(
                                             text = group.id,
-                                            style = MaterialTheme.typography.titleSmall,
+                                            style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer
                                         )
                                         Text(
                                             text = "오늘 $todayItemCount / 전체 $totalItemCount",
-                                            style = MaterialTheme.typography.labelSmall,
+                                            style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer
                                         )
                                     }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
                                             text = "%,d원".format(group.totalAmount),
-                                            style = MaterialTheme.typography.titleSmall,
+                                            style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer
                                         )
@@ -463,9 +464,19 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                                 Text(
                                                     text = item.date,
                                                     style = MaterialTheme.typography.bodySmall,
-                                                    textDecoration = if (isTodayItem) TextDecoration.Underline else TextDecoration.None,
+                                                    // 1. TextDecoration.Underline 대신 None으로 변경하거나 아예 삭제합니다.
+                                                    textDecoration = TextDecoration.None,
                                                     fontWeight = if (isTodayItem) FontWeight.Bold else FontWeight.Normal,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    // 2. 형광펜 효과를 위한 modifier 추가
+                                                     modifier = if (isTodayItem) {
+                                                        Modifier.background(
+                                                            color = Color(0xFFFFFF00).copy(alpha = 0.4f), // 밝은 노란색 + 40% 투명도 (글자가 비쳐보이게)
+                                                            shape = RoundedCornerShape(4.dp) // 형광펜 끝을 살짝 둥글게 (생략 가능)
+                                                        )
+                                                    } else {
+                                                        Modifier // 오늘이 아니면 아무 효과 없음
+                                                    }
                                                 )
                                                 Text(
                                                     modifier = Modifier.widthIn(max = halfScreenWidth),
