@@ -278,9 +278,8 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         }
     }
 
-    val todayStr = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date()) }
     val totalCount = groups.sumOf { it.items.size }
-    val todayCount = groups.sumOf { group -> group.items.count { it.date.startsWith(todayStr) } }
+    val todayCount = groups.sumOf { group -> group.items.count { isToday(it.date) } }
 
     Scaffold(
         topBar = {
