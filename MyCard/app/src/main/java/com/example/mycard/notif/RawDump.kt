@@ -11,16 +11,17 @@ import com.google.gson.JsonStreamParser
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileReader
+import java.util.Calendar
 
 object RawDump {
     private const val TAG = "RawDump"
-    private const val FILE_NAME = "raw_notifications.jsonl"
 
     private val PRETTY_GSON = GsonBuilder().setPrettyPrinting().create()
 
     private val lock = Any()
     @Volatile private var loaded = false
     private val cache = mutableListOf<JsonObject>()
+    private var loadedFilename: String? = null
 
     fun bundleToJson(bundle: Bundle?): String {
         if (bundle == null) return "{}"
@@ -117,16 +118,21 @@ object RawDump {
         synchronized(lock) {
             cache.clear()
             loaded = false
+            loadedFilename = null
         }
     }
 
-    fun sharedPathHint(): String = file().absolutePath
+    fun sharedPathHint(): String = AppStorage.file(loadedFilename ?: currentYearFilename()).absolutePath
 
-    private fun file(): File = AppStorage.file(FILE_NAME)
+    private fun currentYearFilename(): String {
+        val year = Calendar.getInstance().get(Calendar.YEAR)
+        return "raw_notifications_${year}.jsonl"
+    }
 
     private fun ensureLoadedLocked() {
         if (loaded) return
-        val f = file()
+        loadedFilename = currentYearFilename()
+        val f = AppStorage.file(loadedFilename!!)
         Log.d(TAG, "ensureLoadedLocked: path=${f.absolutePath} exists=${f.exists()}")
         if (!f.exists()) {
             loaded = true
@@ -152,7 +158,7 @@ object RawDump {
     }
 
     private fun writeAllLocked() {
-        val f = file()
+        val f = AppStorage.file(loadedFilename ?: currentYearFilename())
         try {
             f.parentFile?.mkdirs()
             BufferedWriter(f.writer(Charsets.UTF_8)).use { w ->
