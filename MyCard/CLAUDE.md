@@ -128,6 +128,18 @@ Only `READ_SMS` is declared. `MainActivity` requests it at runtime; **the Widget
 - 파일명은 카드사 단위 (`신한카드.jsonl`, `현대카드.jsonl`, `삼성카드.jsonl` …). 페이 앱(`com.samsung.android.spay` 등)은 카드 식별이 안 되므로 별도 보관할 가치 없음.
 - 추가 절차: `adb pull /sdcard/Documents/MyCard/raw_notifications_all.jsonl` (필요시 whitelist-only `raw_notifications.jsonl`도) → 해당 패키지 객체만 dedupe (`ts|title|text` 키)해 append. 단말 dump는 multi-line pretty JSON이므로 `JSON.parse`가 아닌 brace-balanced 스캐닝으로 객체 분리.
 
+**카드 룰 문서화 (`docs/card-filter-<카드사>-<YYYY-MM-DD>.md`):**
+- 룰을 **신규 추가**하거나 **기존 룰을 수정**할 때마다 반드시 문서를 작성한다.
+- 파일명: `docs/card-filter-<카드사식별자>-<YYYY-MM-DD>.md`. 같은 날 같은 카드사에 변경이 더 생기면 새 파일을 만들지 않고 기존 파일을 수정한다.
+- 문서에 포함해야 할 항목:
+  1. **대상 알림** — 패키지명, 카드명, 대표 ts
+  2. **알림 구조** — title/text/bigText 예시 (실제 raw 텍스트)
+  3. **추가/변경된 필터** — filter id, title_regex, body_regex, type
+  4. **검증 표** — 매칭 케이스(amount·merchant 확인) + 비매칭 케이스(같은 패키지 광고 등)
+  5. **Raw 데이터 아카이브** — `docs/data/<카드사>.jsonl`에 몇 건 추가했는지
+  6. (수정인 경우) **변경 경위** — 이전 포맷과 무엇이 달라졌는지
+- 기존 룰을 수정한 경우: 기존 문서를 업데이트하되, 수정 이력(날짜·변경 내용)을 문서 하단에 추가한다.
+
 ## MyCard — "main에서 가져오자" 워크플로우
 
 사용자가 "main에서 (특정 commit) 가져오자" 또는 "최신 main 변경 가져오자"라고 할 때 따르는 절차.

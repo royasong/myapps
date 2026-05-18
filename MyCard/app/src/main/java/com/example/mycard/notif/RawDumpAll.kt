@@ -9,10 +9,10 @@ import java.io.BufferedWriter
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
+import java.util.Calendar
 
 object RawDumpAll {
     private const val TAG = "RawDumpAll"
-    private const val FILE_NAME = "raw_notifications_all.jsonl"
 
     private val PRETTY_GSON = GsonBuilder().setPrettyPrinting().create()
 
@@ -34,5 +34,12 @@ object RawDumpAll {
         }
     }
 
-    private fun file(): File = AppStorage.file(FILE_NAME)
+    private fun currentMonthFilename(): String {
+        val cal = Calendar.getInstance()
+        val year = cal.get(Calendar.YEAR)
+        val month = (cal.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
+        return "raw_notifications_all_${year}_${month}.jsonl"
+    }
+
+    private fun file(): File = AppStorage.file(currentMonthFilename())
 }
