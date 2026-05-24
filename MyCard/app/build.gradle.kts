@@ -5,6 +5,14 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val appVersion = rootProject.file("VERSION").readText().trim()
+val versionParts = appVersion.split(".")
+val computedVersionCode =
+    versionParts[0].toInt() * 1000 +
+    versionParts[1].toInt() * 100 +
+    versionParts[2].toInt() * 10 +
+    versionParts[3].toInt()
+
 android {
     namespace = "com.example.mycard"
     compileSdk = 36
@@ -13,8 +21,8 @@ android {
         applicationId = "com.example.mycard"
         minSdk = 34
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = computedVersionCode
+        versionName = appVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
