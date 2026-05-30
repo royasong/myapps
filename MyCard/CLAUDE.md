@@ -101,13 +101,22 @@ Only `READ_SMS` is declared. `MainActivity` requests it at runtime; **the Widget
 4. 룰 작성: title/body에서 `(?<amount>...)` `(?<merchant>...)` named group으로 잡는 regex. **반드시 Python으로 결제 매칭 + 같은 패키지 광고 비매칭 둘 다 검증**한 >뒤 사용자에게 보여주고 승인 받기.
 5. 배포(아래 절차) → 사용자에게 "메뉴 3(업데이트) 누르세요" 안내.
 
+**`card_filters.json` 소스 관리 (git):**
+- 소스 파일은 **`MyCard/config/card_filters.json`** 에서 관리한다. 이 파일이 유일한 원본이다.
+- 수정 절차:
+  1. `config/card_filters.json` 편집
+  2. Python으로 변경된 regex 검증 (매칭 케이스 + 비매칭 케이스 모두)
+  3. 문제 없으면 commit
+  4. 아래 배포 절차로 단말에 반영
+
 **`card_filters.json` 배포 절차 (중요 — owner 유지):**
 - `adb push`는 row owner를 `com.android.shell`로 바꾼다. MyCard는 minSdk 34 + scoped storage라 다른 owner의 `application/json` row는 query에서 제외 — 즉 **단순 `adb push`는 작동하지 않는다**.
 - 올바른 흐름:
   1. row 확인: `adb shell "content query --uri content://media/external/file --projection _id:owner_package_name:_size --where \"_display_name='card_filters.json'\""`
   2. owner=`com.example.mycard` row가 없으면: 사용자에게 메뉴 3 한 번 눌러달라고 부탁 → `CardFilterStore.load()` 안의 bootstrap이 빈 row를 자기 owner로 생성한다 (`IS_PENDING=0` 명시 필수 — 없으면 Samsung One UI에서 query 시 자기가 만든 row를 다시 못 찾는다).
-  3. row id 확인 후: `adb shell "content write --uri content://media/external_primary/file/<row_id>" < /tmp/card_filters.json`. 이 방식은 file 내용만 갱신하고 owner는 유지된다.
+  3. row id 확인 후: `adb shell "content write --uri content://media/external_primary/file/<row_id>" < MyCard/config/card_filters.json`. 이 방식은 file 내용만 갱신하고 owner는 유지된다.
   4. Download/ 등 잘못된 위치로 부수적으로 push된 row가 생겼으면 `content delete --where "_id=<n>"`로 즉시 정리.
+  5. 배포 후 앱에서 **⋮ 메뉴 → 업데이트** → rebuildFromRaw로 기존 알림에 소급 적용.
 
 **필터 파일 스키마** (`MyCard/app/src/main/java/com/example/mycard/parser/CardFilter.kt`):
 - `CardFiltersFile { version, updated_at, filters: List<CardFilter> }`
@@ -152,6 +161,19 @@ Only `READ_SMS` is declared. `MainActivity` requests it at runtime; **the Widget
 3. **순서대로 cherry-pick** — `git cherry-pick <oldest>^..<newest>` 한 번으로 범위 적용. 충돌은 발생 즉시 멈추고 사용자에게 어느 쪽을 채택할지 보여주고 진행. 자동 머지된 파일은 conflict marker만 빠르게 검사하고 통과.
 4. **import 충돌은 기본적으로 HEAD 측을 유지** — 우리 라인이 더 많은 기능(coroutines, SimpleDateFormat 등)을 쓰고 있을 가능성이 높음. 미사용 import가 섞여도 컴파일은 깨지지 않음. 새 기능 호출 자체(예: `scheduleDailyRefresh()`)는 main 측을 채택.
 5. **빌드 확인은 명시 요청 시에만 돌린다.** 기본은 cherry-pick 결과만 보고하고, 사용자가 "빌드해줘"라고 하면 `./gradlew assembleDebug`로 확인.
+
+## Room DB 직접 수정 금지
+
+**`notifications.db`를 `adb shell` + `run-as cat >` 또는 `adb push` 로 직접 덮어쓰는 것은 절대 하지 않는다.**
+
+**이유**: Windows 환경에서 바이너리 파일을 shell 파이프로 push하면 개행 변환(`\n` → `\r\n`) 등으로 SQLite 파일이 손상된다. Room은 시작 시 DB 무결성을 검사하고, 손상 감지 시 **자동으로 DB를 삭제하고 빈 DB를 재생성**한다 — 모든 알림 이력이 날아간다.
+
+**올바른 복구/소급 적용 방법:**
+1. `card_filters.json` 배포 (위 배포 절차 참고)
+2. 앱에서 **⋮ 메뉴 → "업데이트"** 탭
+3. `UpdateAction.rebuildFromRaw()` 가 `raw_notifications_<year>.jsonl` (화이트리스트 파일)을 읽어 DB 전체를 재파싱 — 새 필터가 과거 알림에도 소급 적용됨
+
+이미 파싱된 특정 레코드의 `amount`/`merchant` 값을 수동 교정하고 싶더라도, DB 파일 직접 push 대신 rebuildFromRaw를 쓴다. rebuildFromRaw는 모든 레코드를 최신 필터 기준으로 재파싱하므로 결과가 더 정확하다.
 
 ## Development rules
 1. MyCard 이하 폴더만 수정한다.
