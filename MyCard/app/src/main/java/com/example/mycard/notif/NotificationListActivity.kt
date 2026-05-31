@@ -123,7 +123,7 @@ fun NotificationListScreen() {
     fun deleteLog(log: NotificationEntity) {
         scope.launch(Dispatchers.IO) {
             dao.deleteById(log.id)
-            RawDump.removeLineById(context, log.id)
+            RawDump.removeByTs(context, log.ts)
         }
     }
 

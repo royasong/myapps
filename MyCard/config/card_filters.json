@@ -141,6 +141,21 @@
       "added_from_ts": 1777802051623
     },
     {
+      "id": "hyundai_dept_approval_v1",
+      "card_company": "현백카드",
+      "package": "com.ehyundai.mcard",
+      "match": {
+        "title_regex": "결제승인",
+        "body_regex": "\\[현대백화점카드\\][^,]+,[^,]+,본인,(?<merchant>[^\\n]+?)\\s*\\n(?<amount>[0-9,]+)원",
+        "type": "approval"
+      },
+      "examples": [
+        "[현대백화점카드]05/31,13:05,본인,판교점,에스티 로더 \\n139,650원 일시불 승인"
+      ],
+      "added_at": "2026-05-31T13:05:00+09:00",
+      "added_from_ts": 1780200353005
+    },
+    {
       "id": "lottecard_check_cancel_v1",
       "card_company": "롯데카드",
       "package": "com.lcacApp",
