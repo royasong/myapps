@@ -33,6 +33,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
@@ -83,6 +85,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -103,7 +106,9 @@ fun NotificationListScreen() {
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val dao = remember { NotificationDatabase.get(context).notificationDao() }
-    val logs by dao.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
+    var monthOffset by rememberSaveable { mutableStateOf(0) }
+    val (sinceTs, untilTs) = remember(monthOffset) { monthRange(monthOffset) }
+    val logs by dao.observeInRange(sinceTs, untilTs).collectAsStateWithLifecycle(initialValue = emptyList())
     var permissionGranted by remember { mutableStateOf(isListenerPermissionGranted(context)) }
     var batteryOptIgnored by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
     var whitelist by remember { mutableStateOf(Whitelist.all(context)) }
@@ -150,7 +155,25 @@ fun NotificationListScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("알림 로그") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { monthOffset-- }) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "이전 달")
+                        }
+                        Text(
+                            monthLabel(monthOffset),
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.width(80.dp),
+                            textAlign = TextAlign.Center
+                        )
+                        IconButton(
+                            onClick = { monthOffset++ },
+                            enabled = monthOffset < 0
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "다음 달")
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 ),
@@ -502,3 +525,23 @@ private fun resolveApp(context: Context, pkg: String): Pair<String, Drawable?> {
 
 private val timeFormatter = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 private fun formatTime(ts: Long): String = timeFormatter.format(Date(ts))
+
+fun monthRange(offset: Int): Pair<Long, Long> {
+    val cal = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_MONTH, 1)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        add(Calendar.MONTH, offset)
+    }
+    val since = cal.timeInMillis
+    cal.add(Calendar.MONTH, 1)
+    return since to cal.timeInMillis
+}
+
+val monthLabelFormatter = SimpleDateFormat("yyyy년 M월", Locale.KOREA)
+fun monthLabel(offset: Int): String {
+    val cal = Calendar.getInstance().apply { add(Calendar.MONTH, offset) }
+    return monthLabelFormatter.format(cal.time)
+}
