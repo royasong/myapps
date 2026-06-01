@@ -15,6 +15,12 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications ORDER BY ts DESC")
     fun observeAll(): Flow<List<NotificationEntity>>
 
+    @Query("SELECT * FROM notifications WHERE ts >= :sinceTs AND ts < :untilTs ORDER BY ts DESC")
+    fun observeInRange(sinceTs: Long, untilTs: Long): Flow<List<NotificationEntity>>
+
+    @Query("SELECT * FROM notifications WHERE amount IS NOT NULL AND ts >= :sinceTs AND ts < :untilTs ORDER BY ts DESC")
+    fun observeParsedInRange(sinceTs: Long, untilTs: Long): Flow<List<NotificationEntity>>
+
     @Query("SELECT * FROM notifications WHERE amount IS NOT NULL AND ts >= :sinceTs ORDER BY ts DESC")
     fun observeParsedSince(sinceTs: Long): Flow<List<NotificationEntity>>
 

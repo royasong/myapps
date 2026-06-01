@@ -18,11 +18,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -35,13 +40,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mycard.SmsReceiver
 import com.example.mycard.notif.db.NotificationDatabase
@@ -82,17 +90,10 @@ fun NotificationBasedCardScreen() {
     val coroutineScope = rememberCoroutineScope()
     val dao = remember { NotificationDatabase.get(context).notificationDao() }
 
-    val startOfMonth = remember {
-        Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_MONTH, 1)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-    }
+    var monthOffset by rememberSaveable { mutableStateOf(0) }
+    val (sinceTs, untilTs) = remember(monthOffset) { monthRange(monthOffset) }
 
-    val parsed by dao.observeParsedSince(startOfMonth)
+    val parsed by dao.observeParsedInRange(sinceTs, untilTs)
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
     val groups = remember(parsed) {
@@ -110,7 +111,26 @@ fun NotificationBasedCardScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("이번 달 알림 기반 카드 승인") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { monthOffset-- }) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "이전 달")
+                        }
+                        Text(
+                            monthLabel(monthOffset),
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 16.sp,
+                            modifier = androidx.compose.ui.Modifier.weight(1f),
+                            textAlign = TextAlign.Center
+                        )
+                        IconButton(
+                            onClick = { monthOffset++ },
+                            enabled = monthOffset < 0
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "다음 달")
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -154,7 +174,7 @@ fun NotificationBasedCardScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "이번 달 총 승인",
+                            text = "${monthLabel(monthOffset)} 총 승인",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onPrimary
                         )
