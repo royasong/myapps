@@ -76,7 +76,8 @@ class CardNotificationListener : NotificationListenerService() {
                     baseEntity
                 }
 
-                val newId = NotificationDatabase.get(ctx).notificationDao().insert(finalEntity)
+                val newId = NotificationDatabase.get(ctx).notificationDao()
+                    .insertIfNotRecentDuplicate(finalEntity, NotificationDatabase.DEDUPE_WINDOW_MS)
                 if (newId == -1L) {
                     Log.i(TAG, "db insert dedupe-ignored pkg=$pkg title=${finalEntity.title}")
                 } else {

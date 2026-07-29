@@ -88,7 +88,9 @@ object UpdateAction {
             }
 
             try {
-                val newId = dao.insert(finalEntity)
+                val newId = dao.insertIfNotRecentDuplicate(
+                    finalEntity, NotificationDatabase.DEDUPE_WINDOW_MS
+                )
                 if (newId == -1L) {
                     Log.d(TAG, "rebuildFromRaw[$idx]: dedupe-ignored pkg=${entity.pkg} ts=${entity.ts}")
                 } else {
