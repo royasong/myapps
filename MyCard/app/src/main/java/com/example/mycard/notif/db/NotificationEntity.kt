@@ -8,7 +8,7 @@ import androidx.room.PrimaryKey
     tableName = "notifications",
     indices = [
         Index(value = ["ts"]),
-        Index(value = ["pkg", "title", "text", "bigText"], unique = true)
+        Index(value = ["pkg", "title", "text", "bigText"])
     ]
 )
 data class NotificationEntity(
