@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.3.0.0] - 2026-08-18
+
+`D:\workspace\sharecode`(com.cardtracker.app)에서 쓸 만한 기능을 골라 이식하고, 그 과정에서 발견한
+레이아웃/상태 유지 문제를 함께 수정.
+
+### Added
+- **카드별 월 한도와 초과 경고** — 그룹(카드) 단위로 월 한도를 정하면 초과 시 헤더가 붉게 바뀌고
+  `⚠ +28,040원`을 표시한다. 여유가 있으면 `잔여 N원`. 메인과 알림 기반 보기 양쪽에서 설정 가능
+  (메인 ⋮ → "카드 한도", 알림 기반 보기 ⚙).
+  저장은 `mycard_prefs`의 `card_limits`(JSON) — 위젯이 직접 읽을 수 있는 위치이고,
+  직전에 올린 DB version 3 위에 마이그레이션을 더 얹지 않아도 된다.
+- **카드 아바타** (`ui/CardBrand.kt`) — 실제 카드 비율의 미니 카드에 브랜드 그라데이션, IC 칩, 광택.
+  라벨은 뒷 4자리 우선(`9207` `0179` `8423`), 없으면 `네이버` `SK` `현백` 등. MyCard의 그룹은
+  카드사가 아니라 카드 한 장 단위이므로 첫 글자보다 뒷 4자리가 식별에 유용하다.
+- **알림 접근 권한 경고** (`notif/ListenerAccess.kt`) — 이 앱의 집계는 알림 접근 권한 하나에 달려
+  있는데, 꺼지면 에러 없이 조용히 멈추고 화면에는 예전 합계가 남아 "금액이 안 맞는" 것처럼 보인다.
+  알림 기반 보기에는 배너, 메인에는 스낵바로 알리고 `ON_RESUME`에 재확인한다.
+- **메인 화면 월별 보기** — 상단바에 `‹ 2026년 8월 ›`. 알림 기반 보기에만 있던 기능을 메인에도 넣었다.
+- 한도 초과 요약 배너(알림 기반 보기), 취소 행 배경 강조(양쪽).
+
+### Fixed
+- **회전 시 펼친 카드가 초기화되던 문제** — 펼침 상태가 `remember`라서 구성 변경마다 날아갔다.
+  `rememberSaveable` + `listSaver`로 교체(Set은 Bundle에 직접 저장되지 않음).
+- **그룹 헤더가 3줄 이상으로 늘어나던 문제** — 글꼴이 큰 단말에서 이름·건수·한도가 각각 줄바꿈되어
+  최대 6줄까지 늘어났다. 1행(아이콘·카드명·금액) / 2행(건수·한도) 2행 구조로 재구성하고 모든 Text를
+  `maxLines = 1`로 묶었다.
+- **한도 초과 색이 보이지 않던 문제** — 헤더 `Row`의 `secondaryContainer` 배경이 Card의
+  `errorContainer`를 덮고 있었다. 헤더 배경 자체를 조건부로 전환.
+- `readNotifCardGroups`가 상한 없이 `ts >= 이번 달 1일`로 조회해 미래 ts 알림이 섞일 수 있었다.
+  `getParsedInRange(since, until)`로 월 구간을 닫았다.
+
+### Changed
+- `NotificationDao.getParsedSince` → `getParsedInRange(sinceTs, untilTs)`.
+- `readNotifCardGroups(context, monthOffset = 0)` — 월 선택 지원.
+- 지난 달을 보는 중에는 위젯을 갱신하지 않는다. 위젯은 항상 이번 달만 표시해야 한다.
+- `isListenerPermissionGranted`를 `notif/ListenerAccess.kt`로 공용화하고
+  `NotificationListActivity`의 중복 선언을 제거.
+
+### Notes
+sharecode에서 **가져오지 않은** 것과 이유:
+- dedupe 키 `(issuer, amount, date, merchant)` — 같은 날 같은 가맹점 동일 금액 2회 결제를 삼킨다.
+  v1.2.1.0에서 제거한 문제와 같은 계열.
+- 취소 합산 — sharecode는 취소를 차감이 아니라 무시한다(승인 48,000 + 취소 -48,000 → 48,000).
+  MyCard의 음수 저장 방식이 맞다.
+- 카드사 이름 목록 기반 파서 — 현대카드 3장이 한 덩어리가 된다. MyCard가 카드 단위로 더 정밀하다.
+- SMS 인박스 전체 재스캔, MM/DD 연도 추론 — 알림 ts를 쓰므로 불필요.
+
+
 ## [1.2.1.0] - 2026-07-29
 
 7월 카드 합계가 카드사 앱과 어긋나는 원인을 전수 조사하고(`docs/card-total-mismatch-2026-07-29.md`) 확인된 4가지를 수정.

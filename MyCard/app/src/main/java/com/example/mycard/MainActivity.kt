@@ -45,6 +45,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -54,6 +56,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +68,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.foundation.layout.widthIn
 import com.example.mycard.ui.theme.MyCardTheme
 import com.example.mycard.sms.SMSReader
@@ -72,7 +79,14 @@ import com.example.mycard.notif.ManualEntryActivity
 import com.example.mycard.notif.NotificationBasedCardActivity
 import com.example.mycard.notif.NotificationListActivity
 import com.example.mycard.notif.UpdateAction
+import com.example.mycard.notif.isListenerPermissionGranted
+import com.example.mycard.notif.monthLabel
+import com.example.mycard.notif.openListenerSettings
 import com.example.mycard.notif.readNotifCardGroups
+import com.example.mycard.limit.CardLimitStore
+import com.example.mycard.ui.CardAvatar
+import com.example.mycard.ui.CardLimitDialog
+import com.example.mycard.ui.CardLimitStatus
 import com.example.mycard.storage.AppStorage
 import com.example.mycard.widget.CardWidgetProvider
 import kotlinx.coroutines.launch
@@ -92,6 +106,8 @@ import java.time.format.DateTimeFormatter
 import java.time.Instant
 import android.util.Log
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 class MainActivity : ComponentActivity() {
@@ -156,14 +172,25 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     var groups by remember { mutableStateOf<List<SMSReader.SmsGroup>>(emptyList()) }
     var permissionGranted by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
-    var expandedGroups by remember { mutableStateOf(setOf<String>()) }
+    // 0 = 이번 달, -1 = 지난 달. 회전에도 유지한다.
+    var monthOffset by rememberSaveable { mutableStateOf(0) }
+    // 기본은 펼침. 탭하면 그 카드만 접는다.
+    // 기본은 접힘. 펼친 카드는 회전 등 구성 변경에도 유지되어야 한다.
+    var expandedGroups by rememberSaveable(
+        stateSaver = listSaver(
+            save = { it.toList() },
+            restore = { it.toSet() }
+        )
+    ) { mutableStateOf(setOf<String>()) }
+    var limits by remember { mutableStateOf(CardLimitStore.load(context)) }
+    var showLimitDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
     // 위젯에서 새로고침 요청 시 데이터 갱신
     LaunchedEffect(shouldRefresh) {
         if (shouldRefresh && permissionGranted) {
-            groups = readNotifCardGroups(context)
+            groups = readNotifCardGroups(context, monthOffset)
 
             // 위젷 업데이트
             val grandTotal = groups.sumOf { it.totalAmount }
@@ -185,6 +212,15 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         }
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) limits = CardLimitStore.load(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // SMS 수신 시 앱이 열려있으면 UI 자동 갱신
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
@@ -192,7 +228,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS)
                     == PackageManager.PERMISSION_GRANTED
                 ) {
-                    coroutineScope.launch { groups = readNotifCardGroups(context) }
+                    coroutineScope.launch { groups = readNotifCardGroups(context, monthOffset) }
                 }
             }
         }
@@ -210,7 +246,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             context, Manifest.permission.READ_SMS
         ) == PackageManager.PERMISSION_GRANTED
         permissionGranted = readGranted
-        if (readGranted) coroutineScope.launch { groups = readNotifCardGroups(context) }
+        if (readGranted) coroutineScope.launch { groups = readNotifCardGroups(context, monthOffset) }
     }
 
     LaunchedEffect(Unit) {
@@ -218,13 +254,24 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         val receiveGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
         if (readGranted) {
             permissionGranted = true
-            groups = readNotifCardGroups(context)
+            groups = readNotifCardGroups(context, monthOffset)
         }
         val missing = buildList {
             if (!readGranted) add(Manifest.permission.READ_SMS)
             if (!receiveGranted) add(Manifest.permission.RECEIVE_SMS)
         }
         if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+
+        // 이 앱의 집계는 알림 접근 권한 하나에 달려 있다. 꺼지면 에러 없이 그냥 멈추므로 알려준다.
+        if (!isListenerPermissionGranted(context)) {
+            coroutineScope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = "알림 접근 권한이 꺼져 있어 새 결제가 집계되지 않습니다",
+                    actionLabel = "설정"
+                )
+                if (result == SnackbarResult.ActionPerformed) openListenerSettings(context)
+            }
+        }
 
         if (!AppStorage.hasAllFilesAccess()) {
             coroutineScope.launch {
@@ -239,8 +286,14 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
         }
     }
 
-    // 총액이 변경되면 위젷 업데이트
-    LaunchedEffect(groups) {
+    LaunchedEffect(monthOffset) {
+        if (permissionGranted) groups = readNotifCardGroups(context, monthOffset)
+    }
+
+    // 총액이 변경되면 위젷 업데이트.
+    // 지난 달을 보고 있을 때 위젯을 덮어쓰면 위젯이 과거 달 합계를 표시하게 되므로 이번 달만 반영한다.
+    LaunchedEffect(groups, monthOffset) {
+        if (monthOffset != 0) return@LaunchedEffect
         val grandTotal = groups.sumOf { it.totalAmount }
         val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date())
         val totalCount = groups.sumOf { it.items.size }
@@ -285,7 +338,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
             == PackageManager.PERMISSION_GRANTED
         ) {
             coroutineScope.launch {
-                groups = readNotifCardGroups(context)
+                groups = readNotifCardGroups(context, monthOffset)
             }
         } else {
             permissionLauncher.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
@@ -295,13 +348,47 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
     val totalCount = groups.sumOf { it.items.size }
     val todayCount = groups.sumOf { group -> group.items.count { isToday(it.date) } }
 
+    if (showLimitDialog) {
+        val companies = (groups.map { it.id } + limits.keys).distinct().sorted()
+        CardLimitDialog(
+            companies = companies,
+            currentLimits = limits,
+            onSave = { updated ->
+                CardLimitStore.saveAll(context, updated)
+                limits = CardLimitStore.load(context)
+            },
+            onDismiss = { showLimitDialog = false }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Text("이번 달 카드 내역 ($todayCount/$totalCount)", fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { monthOffset-- }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = "이전 달"
+                            )
+                        }
+                        Text(
+                            text = monthLabel(monthOffset),
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { monthOffset++ },
+                            enabled = monthOffset < 0
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "다음 달"
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -331,6 +418,13 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                     showMenu = false
                                     val intent = android.content.Intent(context, SettingsActivity::class.java)
                                     context.startActivity(intent)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("카드 한도") },
+                                onClick = {
+                                    showMenu = false
+                                    showLimitDialog = true
                                 }
                             )
                             DropdownMenuItem(
@@ -392,7 +486,7 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
 
             groups.isEmpty() -> {
                 Text(
-                    text = "이번 달 [Web발신] 카드 승인 문자가 없습니다.",
+                    text = "${monthLabel(monthOffset)}에 집계된 카드 내역이 없습니다.",
                     modifier = Modifier
                         .padding(innerPadding)
                         .padding(16.dp)
@@ -426,11 +520,23 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "이번 달 총 승인",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Column {
+                                    Text(
+                                        text = "총 승인",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = if (monthOffset == 0) {
+                                            "오늘 $todayCount / 전체 ${totalCount}건"
+                                        } else {
+                                            "전체 ${totalCount}건"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 Text(
                                     text = "%,d원".format(grandTotal),
                                     style = MaterialTheme.typography.titleLarge,
@@ -446,17 +552,34 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                         val isExpanded = expandedGroups.contains(group.id)
                         val totalItemCount = group.items.size
                         val todayItemCount = group.items.count { isToday(it.date) }
+                        val monthlyLimit = limits[group.id]
+                        val isOverLimit = monthlyLimit != null && group.totalAmount > monthlyLimit
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
+                            colors = if (isOverLimit) {
+                                CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer
+                                )
+                            } else {
+                                CardDefaults.cardColors()
+                            },
                             elevation = CardDefaults.cardElevation(2.dp)
                         ) {
                             Column {
                                 // 그룹 헤더: ID + 합계 (클릭 가능)
-                                Row(
+                                // 2행 고정: 1행 = 아이콘·카드명·금액, 2행 = 건수·한도.
+                                // 큰 글꼴에서도 줄바꿈되지 않도록 각 Text는 maxLines = 1로 묶는다.
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                                        .background(
+                                            if (isOverLimit) {
+                                                MaterialTheme.colorScheme.errorContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.secondaryContainer
+                                            }
+                                        )
                                         .padding(horizontal = 14.dp, vertical = 10.dp)
                                         .clickable {
                                             expandedGroups = if (isExpanded) {
@@ -464,36 +587,51 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                             } else {
                                                 expandedGroups + group.id
                                             }
-                                        },
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                        }
                                 ) {
-                                    Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CardAvatar(group.id)
                                         Text(
                                             text = group.id,
-                                            style = MaterialTheme.typography.titleMedium,
+                                            style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier
+                                                .padding(start = 10.dp)
+                                                .weight(1f)
                                         )
-                                        Text(
-                                            text = "오늘 $todayItemCount / 전체 $totalItemCount",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
                                             text = "%,d원".format(group.totalAmount),
-                                            style = MaterialTheme.typography.titleMedium,
+                                            style = MaterialTheme.typography.titleSmall,
                                             fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer
                                         )
                                         Icon(
                                             imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
                                             contentDescription = null,
                                             tint = Color(0xFF90CAF9),
-                                            modifier = Modifier.padding(start = 1.dp).size(20.dp)
+                                            modifier = Modifier.padding(start = 2.dp).size(20.dp)
                                         )
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 56.dp, top = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "오늘 $todayItemCount / 전체 $totalItemCount",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (monthlyLimit != null) {
+                                            CardLimitStatus(monthlyLimit, group.totalAmount)
+                                        }
                                     }
                                 }
 
@@ -509,7 +647,14 @@ fun CardApprovalScreen(shouldRefresh: Boolean = false) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .background(Color(0xFFF0F0F0))
+                                                .background(
+                                                    if (isCancel) {
+                                                        MaterialTheme.colorScheme.errorContainer
+                                                            .copy(alpha = 0.4f)
+                                                    } else {
+                                                        Color(0xFFF0F0F0)
+                                                    }
+                                                )
                                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
