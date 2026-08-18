@@ -52,8 +52,11 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE amount IS NOT NULL AND ts >= :sinceTs ORDER BY ts DESC")
     fun observeParsedSince(sinceTs: Long): Flow<List<NotificationEntity>>
 
-    @Query("SELECT * FROM notifications WHERE amount IS NOT NULL AND ts >= :sinceTs ORDER BY ts DESC")
-    suspend fun getParsedSince(sinceTs: Long): List<NotificationEntity>
+    @Query(
+        "SELECT * FROM notifications WHERE amount IS NOT NULL " +
+            "AND ts >= :sinceTs AND ts < :untilTs ORDER BY ts DESC"
+    )
+    suspend fun getParsedInRange(sinceTs: Long, untilTs: Long): List<NotificationEntity>
 
     @Query("SELECT COUNT(*) FROM notifications")
     fun observeCount(): Flow<Int>

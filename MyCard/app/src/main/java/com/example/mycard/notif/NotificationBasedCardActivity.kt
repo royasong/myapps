@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,25 +37,36 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mycard.SmsReceiver
 import com.example.mycard.notif.db.NotificationDatabase
 import com.example.mycard.notif.db.NotificationEntity
+import com.example.mycard.limit.CardLimitStore
 import com.example.mycard.parser.CardFilterStore
+import com.example.mycard.ui.CardAvatar
+import com.example.mycard.ui.CardLimitDialog
+import com.example.mycard.ui.CardLimitStatus
 import com.example.mycard.ui.theme.MyCardTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -80,8 +92,12 @@ class NotificationBasedCardActivity : ComponentActivity() {
 private data class CardSummaryGroup(
     val cardCompany: String,
     val totalAmount: Long,
-    val items: List<NotificationEntity>
-)
+    val items: List<NotificationEntity>,
+    val monthlyLimit: Long? = null
+) {
+    val isOverLimit: Boolean get() = monthlyLimit != null && totalAmount > monthlyLimit
+    val excess: Long get() = if (monthlyLimit != null && isOverLimit) totalAmount - monthlyLimit else 0L
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -96,11 +112,34 @@ fun NotificationBasedCardScreen() {
     val parsed by dao.observeParsedInRange(sinceTs, untilTs)
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
-    val groups = remember(parsed) {
-        groupByCompany(context, parsed)
+    var limits by remember { mutableStateOf(CardLimitStore.load(context)) }
+    var showLimitDialog by remember { mutableStateOf(false) }
+    var listenerGranted by remember { mutableStateOf(isListenerPermissionGranted(context)) }
+
+    val groups = remember(parsed, limits) {
+        groupByCompany(context, parsed, limits)
     }
 
-    var expandedGroups by remember { mutableStateOf(setOf<String>()) }
+    // 설정 화면에서 권한을 켜고 돌아왔을 때 배너가 사라지도록 재확인한다.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                listenerGranted = isListenerPermissionGranted(context)
+                limits = CardLimitStore.load(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 기본은 접힘. 펼친 카드는 회전에도 유지되어야 한다.
+    var expandedGroups by rememberSaveable(
+        stateSaver = listSaver(
+            save = { it.toList() },
+            restore = { it.toSet() }
+        )
+    ) { mutableStateOf(setOf<String>()) }
 
     // 다이얼로그 상태
     var selectedItem by remember { mutableStateOf<NotificationEntity?>(null) }
@@ -133,162 +172,230 @@ fun NotificationBasedCardScreen() {
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+                ),
+                actions = {
+                    IconButton(onClick = { showLimitDialog = true }) {
+                        Icon(Icons.Filled.Settings, contentDescription = "카드별 월 한도")
+                    }
+                }
             )
         }
     ) { innerPadding ->
-        if (groups.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(16.dp)
-            ) {
-                EmptyStateCard()
-            }
-            return@Scaffold
-        }
-
-        val grandTotal = groups.sumOf { it.totalAmount }
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
         ) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    elevation = CardDefaults.cardElevation(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "${monthLabel(monthOffset)} 총 승인",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                        Text(
-                            text = "%,d원".format(grandTotal),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                }
+            if (!listenerGranted) {
+                ListenerAccessWarningBanner(onOpenSettings = { openListenerSettings(context) })
+            }
+            val overLimit = groups.filter { it.isOverLimit }
+            OverLimitBanner(overLimit.size, overLimit.sumOf { it.excess })
+
+            if (groups.isEmpty()) {
+                Column(modifier = Modifier.padding(16.dp)) { EmptyStateCard() }
+                return@Column
             }
 
-            items(groups) { group ->
-                val isExpanded = expandedGroups.contains(group.cardCompany)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column {
+            val grandTotal = groups.sumOf { it.totalAmount }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 12.dp)
+            ) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        elevation = CardDefaults.cardElevation(4.dp)
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.secondaryContainer)
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                                .clickable {
-                                    expandedGroups = if (isExpanded) {
-                                        expandedGroups - group.cardCompany
-                                    } else {
-                                        expandedGroups + group.cardCompany
-                                    }
-                                },
+                                .padding(16.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = group.cardCompany,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                text = "${monthLabel(monthOffset)} 총 승인",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "%,d원".format(group.totalAmount),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                                Text(
-                                    text = if (isExpanded) " ▲" else " ▼",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
+                            Text(
+                                text = "%,d원".format(grandTotal),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
+                    }
+                }
 
-                        if (isExpanded) {
-                            group.items.forEach { item ->
-                                val amount = item.amount ?: 0L
-                                val isCancel = amount < 0
-                                val displayAmount = abs(amount)
-                                val typeText = if (isCancel) "취소" else "승인"
-
+                items(groups) { group ->
+                    val isExpanded = expandedGroups.contains(group.cardCompany)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = if (group.isOverLimit) {
+                            CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            )
+                        } else {
+                            CardDefaults.cardColors()
+                        },
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column {
+                            // 2행 고정: 1행 = 아이콘·카드명·금액, 2행 = 건수·한도.
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (group.isOverLimit) {
+                                            MaterialTheme.colorScheme.errorContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.secondaryContainer
+                                        }
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    .clickable {
+                                        expandedGroups = if (isExpanded) {
+                                            expandedGroups - group.cardCompany
+                                        } else {
+                                            expandedGroups + group.cardCompany
+                                        }
+                                    }
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CardAvatar(group.cardCompany)
+                                    Text(
+                                        text = group.cardCompany,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier
+                                            .padding(start = 10.dp)
+                                            .weight(1f)
+                                    )
+                                    Text(
+                                        text = "%,d원".format(group.totalAmount),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Text(
+                                        text = if (isExpanded) " ▲" else " ▼",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .combinedClickable(
-                                            onClick = {},
-                                            onLongClick = { selectedItem = item }
-                                        )
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                        .padding(start = 56.dp, top = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = formatTs(item.ts),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = item.merchant ?: item.text.ifEmpty { item.title },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            text = typeText,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (isCancel)
-                                                MaterialTheme.colorScheme.error
-                                            else
-                                                MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "%,d원".format(displayAmount),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (isCancel)
-                                                MaterialTheme.colorScheme.error
-                                            else
-                                                MaterialTheme.colorScheme.onSurface
-                                        )
+                                    Text(
+                                        text = "${group.items.size}건",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (group.monthlyLimit != null) {
+                                        CardLimitStatus(group.monthlyLimit, group.totalAmount)
                                     }
                                 }
-                                HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
+                            }
+
+                            if (isExpanded) {
+                                group.items.forEach { item ->
+                                    val amount = item.amount ?: 0L
+                                    val isCancel = amount < 0
+                                    val displayAmount = abs(amount)
+                                    val typeText = if (isCancel) "취소" else "승인"
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .combinedClickable(
+                                                onClick = {},
+                                                onLongClick = { selectedItem = item }
+                                            )
+                                            .background(
+                                                if (isCancel) {
+                                                    MaterialTheme.colorScheme.errorContainer
+                                                        .copy(alpha = 0.4f)
+                                                } else {
+                                                    Color.Transparent
+                                                }
+                                            )
+                                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = formatTs(item.ts),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = item.merchant ?: item.text.ifEmpty { item.title },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(
+                                                text = typeText,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (isCancel)
+                                                    MaterialTheme.colorScheme.error
+                                                else
+                                                    MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "%,d원".format(displayAmount),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (isCancel)
+                                                    MaterialTheme.colorScheme.error
+                                                else
+                                                    MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp))
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showLimitDialog) {
+        // 이번 달에 집계된 그룹 + 이미 한도가 설정된 그룹을 합치면,
+        // 이번 달 사용이 없는 카드도 한도를 고칠 수 있다.
+        val companies = (groups.map { it.cardCompany } + limits.keys).distinct().sorted()
+        CardLimitDialog(
+            companies = companies,
+            currentLimits = limits,
+            onSave = { updated ->
+                CardLimitStore.saveAll(context, updated)
+                limits = CardLimitStore.load(context)
+            },
+            onDismiss = { showLimitDialog = false }
+        )
     }
 
     // 액션 선택 다이얼로그 (롱클릭 후)
@@ -490,7 +597,8 @@ private fun EmptyStateCard() {
 
 private fun groupByCompany(
     context: android.content.Context,
-    entities: List<NotificationEntity>
+    entities: List<NotificationEntity>,
+    limits: Map<String, Long> = emptyMap()
 ): List<CardSummaryGroup> {
     val filters = CardFilterStore.load(context).filters
     val filterIdToCompany = filters.associate { it.id to it.cardCompany }
@@ -505,7 +613,8 @@ private fun groupByCompany(
             CardSummaryGroup(
                 cardCompany = company,
                 totalAmount = items.sumOf { it.amount ?: 0L },
-                items = items.sortedByDescending { it.ts }
+                items = items.sortedByDescending { it.ts },
+                monthlyLimit = limits[company]
             )
         }
         .sortedByDescending { it.totalAmount }
