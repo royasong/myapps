@@ -3,7 +3,7 @@ package com.example.mycard
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.example.mycard.sms.SMSReader
+import com.example.mycard.notif.readNotifCardGroups
 import com.example.mycard.widget.CardWidgetProvider
 import java.io.File
 import java.text.SimpleDateFormat
@@ -20,8 +20,8 @@ class CardRefreshWorker(
         return try {
             val context = applicationContext
 
-            // SMS 읽기
-            val groups = SMSReader.readCardApprovalGrouped(context)
+            // 알림 기반 집계 읽기
+            val groups = readNotifCardGroups(context)
 
             // SharedPreferences 갱신
             val grandTotal = groups.sumOf { it.totalAmount }
