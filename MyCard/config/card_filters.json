@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-29T23:30:00+09:00",
+  "updated_at": "2026-08-24T22:40:00+09:00",
   "filters": [
     {
       "id": "hyundaicard_naver_approval_v1",
@@ -244,6 +244,54 @@
       "examples": [],
       "added_at": "2026-05-03T18:54:00+09:00",
       "added_from_ts": 1777802051623
+    },
+    {
+      "id": "hyundaicard_naver_approval_v2",
+      "card_company": "네이버 현대카드",
+      "package": "com.hyundaicard.appcard",
+      "match": {
+        "title_regex": "현대카드",
+        "body_regex": "네이버[^\\r\\n]{0,20}승인\\s*(?<amount>[0-9,]+)원[\\s\\S]*?\\r?\\n(?<merchant>[^\\r\\n]+?)\\s*\\r?\\n누적",
+        "type": "approval"
+      },
+      "examples": [
+        "차상욱 님, 현대 네이버 승인 7,890원 일시불, 8/20 10:07 \r\n쿠팡페이주식회사 \r\n누적1,289,410원",
+        "차상욱 님, 네이버 현대카드 승인 21,720원 일시불, 8/18 23:08 \r\n쿠팡페이주식회사 \r\n누적1,273,020원"
+      ],
+      "added_at": "2026-08-24T22:40:00+09:00",
+      "added_from_ts": 1787230020000
+    },
+    {
+      "id": "hyundaicard_sktm_approval_v2",
+      "card_company": "SK 현대카드",
+      "package": "com.hyundaicard.appcard",
+      "match": {
+        "title_regex": "현대카드",
+        "body_regex": "SKT[^\\r\\n]{0,30}승인\\s*(?<amount>[0-9,]+)원[\\s\\S]*?\\r?\\n(?<merchant>[^\\r\\n]+?)\\s*\\r?\\n누적",
+        "type": "approval"
+      },
+      "examples": [
+        "차상욱 님, 현대 SKT M할인형 승인 12,000원 일시불, 8/20 12:34 \r\n미쁜선순대 \r\n누적1,301,410원",
+        "차상욱 님, SKT M 통신할인2.0 승인 8,500원 일시불, 8/19 12:43 \r\n재크와콩나물 \r\n누적1,281,520원",
+        "차상욱 님, SKT-M Ed3(통신할인형2.0) 승인 299,000원 일시불, 5/30 17:20 \r\n롯데몰수지점 \r\n누적1,207,910원"
+      ],
+      "added_at": "2026-08-24T22:40:00+09:00",
+      "added_from_ts": 1787239980000
+    },
+    {
+      "id": "hyundaicard_autopay_skt_approval_v1",
+      "card_company": "SK 현대카드",
+      "package": "com.hyundaicard.appcard",
+      "match": {
+        "title_regex": "현대카드",
+        "body_regex": "자동납부 승인\\s+\\S+\\s+(?<merchant>SKT)\\s[^\\r\\n]*?(?<amount>[0-9,]+)원",
+        "type": "approval"
+      },
+      "examples": [
+        "자동납부 승인 차*욱님 SKT 08월-**23-2287 39,650원"
+      ],
+      "added_at": "2026-08-24T22:40:00+09:00",
+      "added_from_ts": 1787290200000
     }
   ]
 }

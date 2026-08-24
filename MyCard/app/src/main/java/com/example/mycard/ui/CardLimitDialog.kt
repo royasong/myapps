@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -99,9 +100,12 @@ fun CardLimitDialog(
     )
 }
 
+private val UnderLimitBlue = Color(0xFF1565C0)
+
 /**
  * 그룹 헤더 2행 오른쪽에 붙는 한도 상태 한 줄.
- * 초과면 초과분, 여유가 있으면 잔여를 보여준다. 큰 글꼴에서도 줄바꿈되지 않게 짧게 유지한다.
+ * 초과면 초과분을 붉게 +로, 여유가 있으면 남은 금액을 푸르게 -로 보여준다.
+ * 큰 글꼴에서도 줄바꿈되지 않게 짧게 유지한다.
  */
 @Composable
 fun CardLimitStatus(
@@ -114,14 +118,10 @@ fun CardLimitStatus(
         text = if (over) {
             "⚠ +%,d원".format(total - monthlyLimit)
         } else {
-            "잔여 %,d원".format(monthlyLimit - total)
+            "-%,d원".format(monthlyLimit - total)
         },
         style = MaterialTheme.typography.labelSmall,
-        color = if (over) {
-            MaterialTheme.colorScheme.error
-        } else {
-            MaterialTheme.colorScheme.onSecondaryContainer
-        },
+        color = if (over) MaterialTheme.colorScheme.error else UnderLimitBlue,
         maxLines = 1,
         modifier = modifier
     )

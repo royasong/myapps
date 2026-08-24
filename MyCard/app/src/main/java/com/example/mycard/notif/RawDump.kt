@@ -10,7 +10,9 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonStreamParser
 import java.io.BufferedWriter
 import java.io.File
+import java.io.FileOutputStream
 import java.io.FileReader
+import java.io.OutputStreamWriter
 import java.util.Calendar
 
 object RawDump {
@@ -48,10 +50,9 @@ object RawDump {
 
     fun appendObject(@Suppress("UNUSED_PARAMETER") context: Context, obj: JsonObject) {
         synchronized(lock) {
-            ensureLoadedLocked()
-            cache.add(obj)
-            Log.d(TAG, "appendObject: cache size=${cache.size}")
-            writeAllLocked()
+            if (loaded) cache.add(obj)
+            appendToFileLocked(obj)
+            Log.d(TAG, "appendObject: loaded=$loaded cache size=${cache.size}")
         }
     }
 
@@ -155,6 +156,19 @@ object RawDump {
             Log.w(TAG, "ensureLoadedLocked: load failed", e)
         }
         loaded = true
+    }
+
+    private fun appendToFileLocked(obj: JsonObject) {
+        val f = AppStorage.file(loadedFilename ?: currentYearFilename())
+        try {
+            f.parentFile?.mkdirs()
+            BufferedWriter(OutputStreamWriter(FileOutputStream(f, true), Charsets.UTF_8)).use { w ->
+                w.write(PRETTY_GSON.toJson(obj))
+                w.write("\n")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "appendToFileLocked: failed", e)
+        }
     }
 
     private fun writeAllLocked() {

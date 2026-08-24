@@ -19,7 +19,8 @@ object Whitelist {
         "net.ib.android.smcard",
         "com.sktelecom.smartcard.SmartcardService",
         "com.example.mycard",
-        "com.shcard.smartpay"
+        "com.shcard.smartpay",
+        "com.lcacApp"
     )
 
     private val cache = mutableSetOf<String>()
