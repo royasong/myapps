@@ -27,12 +27,12 @@ class AppPreferences(context: Context) {
 
     /** 리포트를 받을 수신 이메일 */
     var recipientEmail: String
-        get() = prefs.getString(KEY_RECIPIENT_EMAIL, "") ?: ""
+        get() = prefs.getString(KEY_RECIPIENT_EMAIL, DEFAULT_EMAIL) ?: DEFAULT_EMAIL
         set(value) = prefs.edit().putString(KEY_RECIPIENT_EMAIL, value).apply()
 
     /** 발신에 사용할 이메일 계정 (예: Gmail) */
     var senderEmail: String
-        get() = prefs.getString(KEY_SENDER_EMAIL, "") ?: ""
+        get() = prefs.getString(KEY_SENDER_EMAIL, DEFAULT_EMAIL) ?: DEFAULT_EMAIL
         set(value) = prefs.edit().putString(KEY_SENDER_EMAIL, value).apply()
 
     /** 발신 계정의 앱 비밀번호(App Password) */
@@ -63,6 +63,11 @@ class AppPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_ENABLED, value).apply()
 
+    /** 하루 총 사용 시간이 이 값(시간)을 넘으면 경고 대상으로 판단한다. 기본값 3시간. */
+    var warningThresholdHours: Int
+        get() = prefs.getInt(KEY_WARNING_THRESHOLD_HOURS, DEFAULT_WARNING_THRESHOLD_HOURS)
+        set(value) = prefs.edit().putInt(KEY_WARNING_THRESHOLD_HOURS, value).apply()
+
     /** 마지막 발송 결과 메시지 (UI에 표시용) */
     var lastSendResult: String
         get() = prefs.getString(KEY_LAST_RESULT, "") ?: ""
@@ -84,5 +89,8 @@ class AppPreferences(context: Context) {
         private const val KEY_ENABLED = "schedule_enabled"
         private const val KEY_LAST_RESULT = "last_send_result"
         private const val KEY_LAST_SENT_AT = "last_send_at"
+        private const val KEY_WARNING_THRESHOLD_HOURS = "warning_threshold_hours"
+        const val DEFAULT_WARNING_THRESHOLD_HOURS = 3
+        private const val DEFAULT_EMAIL = "roya.song@gmail.com"
     }
 }

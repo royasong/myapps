@@ -21,14 +21,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -38,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -49,7 +55,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.arintabletusage.data.AppPreferences
 import com.example.arintabletusage.permissions.PermissionHelper
+import com.example.arintabletusage.report.UsageReportBuilder
 import com.example.arintabletusage.schedule.ReportScheduler
+import com.example.arintabletusage.schedule.UsageCheckScheduler
 import com.example.arintabletusage.ui.theme.ArinTabletUsageTheme
 import com.example.arintabletusage.worker.SendReportWorker
 import java.util.Calendar
@@ -59,13 +67,68 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // 매시간 사용 시간을 체크하는 백그라운드 작업을 예약한다. 이미 예약돼 있으면 그대로 유지된다.
+        UsageCheckScheduler.schedule(this)
         setContent {
             ArinTabletUsageTheme {
+                val context = LocalContext.current
+                var menuExpanded by remember { mutableStateOf(false) }
+                var currentUsageDialogText by remember { mutableStateOf<String?>(null) }
+
                 Scaffold(
                     modifier = Modifier.fillMaxWidth(),
-                    topBar = { TopAppBar(title = { Text("태블릿 사용시간 리포트") }) }
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("태블릿 사용시간 리포트") },
+                            actions = {
+                                IconButton(onClick = { menuExpanded = true }) {
+                                    Text("⋮", style = MaterialTheme.typography.titleLarge)
+                                }
+                                DropdownMenu(
+                                    expanded = menuExpanded,
+                                    onDismissRequest = { menuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("현재 사용시간 보기") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            if (!PermissionHelper.hasUsageAccess(context)) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "먼저 사용 기록 접근 권한을 허용해주세요.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                return@DropdownMenuItem
+                                            }
+                                            val report = UsageReportBuilder.buildTodayReport(context)
+                                            currentUsageDialogText = UsageReportBuilder.buildReportText(report)
+                                        }
+                                    )
+                                }
+                            }
+                        )
+                    }
                 ) { innerPadding ->
                     ReportSettingsScreen(modifier = Modifier.padding(innerPadding))
+                }
+
+                currentUsageDialogText?.let { text ->
+                    AlertDialog(
+                        onDismissRequest = { currentUsageDialogText = null },
+                        confirmButton = {
+                            TextButton(onClick = { currentUsageDialogText = null }) {
+                                Text("닫기")
+                            }
+                        },
+                        title = { Text("현재 사용시간") },
+                        text = {
+                            Text(
+                                text = text,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.verticalScroll(rememberScrollState())
+                            )
+                        }
+                    )
                 }
             }
         }
@@ -85,10 +148,12 @@ fun ReportSettingsScreen(modifier: Modifier = Modifier) {
     var hour by remember { mutableStateOf(prefs.scheduleHour) }
     var minute by remember { mutableStateOf(prefs.scheduleMinute) }
     var scheduleEnabled by remember { mutableStateOf(prefs.scheduleEnabled) }
+    var warningThresholdHours by remember { mutableStateOf(prefs.warningThresholdHours.toString()) }
     var lastResult by remember { mutableStateOf(prefs.lastSendResult) }
 
     var hasUsageAccess by remember { mutableStateOf(PermissionHelper.hasUsageAccess(context)) }
     var canExactAlarm by remember { mutableStateOf(ReportScheduler.canScheduleExactAlarms(context)) }
+    var hasOverlayPermission by remember { mutableStateOf(PermissionHelper.hasOverlayPermission(context)) }
     var hasNotificationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
@@ -107,6 +172,7 @@ fun ReportSettingsScreen(modifier: Modifier = Modifier) {
             if (event == Lifecycle.Event.ON_RESUME) {
                 hasUsageAccess = PermissionHelper.hasUsageAccess(context)
                 canExactAlarm = ReportScheduler.canScheduleExactAlarms(context)
+                hasOverlayPermission = PermissionHelper.hasOverlayPermission(context)
                 lastResult = prefs.lastSendResult
             }
         }
@@ -156,6 +222,16 @@ fun ReportSettingsScreen(modifier: Modifier = Modifier) {
                         Text("시간 선택")
                     }
                 }
+
+                OutlinedTextField(
+                    value = warningThresholdHours,
+                    onValueChange = { warningThresholdHours = it.filter { c -> c.isDigit() } },
+                    label = { Text("경고 기준 시간 (하루 총 사용, 시간 단위)") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = KeyboardType.Number
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
@@ -246,6 +322,17 @@ fun ReportSettingsScreen(modifier: Modifier = Modifier) {
                 ) {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
+
+                PermissionRow(
+                    label = "다른 앱 위에 표시 권한 (경고 오버레이용)",
+                    granted = hasOverlayPermission,
+                    buttonText = "설정 열기"
+                ) {
+                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                    }
+                    context.startActivity(intent)
+                }
             }
         }
 
@@ -277,6 +364,8 @@ fun ReportSettingsScreen(modifier: Modifier = Modifier) {
                     prefs.scheduleMinute = minute
                     prefs.scheduleEnabled = true
                     scheduleEnabled = true
+                    prefs.warningThresholdHours = warningThresholdHours.toIntOrNull()
+                        ?: AppPreferences.DEFAULT_WARNING_THRESHOLD_HOURS
 
                     ReportScheduler.schedule(context, hour, minute)
                     val next = Calendar.getInstance().apply {
@@ -340,6 +429,7 @@ fun ReportSettingsScreen(modifier: Modifier = Modifier) {
             ) {
                 Text("현재 상태", style = MaterialTheme.typography.titleMedium)
                 Text(if (scheduleEnabled) "예약: 켜짐 (매일 %02d:%02d)".format(hour, minute) else "예약: 꺼짐")
+                Text("경고 기준: 하루 총 사용 ${warningThresholdHours.ifBlank { "0" }}시간 초과")
                 Text("마지막 발송 결과: ${lastResult.ifBlank { "아직 없음" }}")
             }
         }

@@ -29,8 +29,17 @@ data class UsageReport(
 )
 
 /**
- * UsageStatsManager의 이벤트 로그(ACTIVITY_RESUMED / ACTIVITY_PAUSED)를 직접 순회해서
- * 오늘 자정부터 지금까지의 앱별 포그라운드 사용 시간을 계산하고, 텍스트 리포트로 만든다.
+ * 오늘 자정부터 지금까지의 앱별 포그라운드 사용 시간을 계산해서 텍스트 리포트로 만든다.
+ *
+ * UsageStatsManager의 queryAndAggregateUsageStats()/UsageStats.totalTimeInForeground는
+ * 화면에 보이지 않는 포그라운드 서비스(백그라운드 재생, 위치 추적, 알림 동기화 등) 구간까지
+ * "포그라운드"로 잡아 디지털 웰빙의 화면 사용시간보다 훨씬 크게 나오는 경우가 있다.
+ * 그래서 화면에 실제로 떠 있던 액티비티만 잡히는 ACTIVITY_RESUMED/ACTIVITY_PAUSED 이벤트를
+ * 직접 재생해서 계산하되, 한 번에 화면 맨 위(포그라운드)에는 앱이 하나만 있을 수 있다고 보고
+ * "현재 화면에 떠 있는 앱" 단 하나만 추적하는 방식으로 재생한다. 이렇게 하면
+ * - 분할화면/팝업 보기 등 멀티윈도우에서 여러 앱이 동시에 resumed로 잡혀 시간이 중복 누적되는 문제,
+ * - PAUSED 이벤트가 누락돼 리포트 생성 시점까지 시간이 통째로 더해지는 문제
+ * 를 구조적으로 막을 수 있다(둘 다 이전에 실제로 발생한 과다 집계 원인이었다).
  */
 object UsageReportBuilder {
 
@@ -46,33 +55,42 @@ object UsageReportBuilder {
         }.timeInMillis
 
         val events = usm.queryEvents(startOfDay, now)
-        val foregroundStart = HashMap<String, Long>()
         val totalDuration = HashMap<String, Long>()
         val launchCount = HashMap<String, Int>()
         val event = UsageEvents.Event()
+
+        // "지금 화면 맨 위에 떠 있는 앱" 단 하나만 추적한다. 새로 RESUMED되는 앱이 생기면
+        // (같은 앱이든 다른 앱이든) 그 시점에서 이전 앱의 구간을 무조건 마감한다.
+        var currentPkg: String? = null
+        var currentStart: Long = startOfDay
+
+        fun closeCurrent(endTime: Long) {
+            val pkg = currentPkg ?: return
+            if (endTime > currentStart) {
+                totalDuration[pkg] = (totalDuration[pkg] ?: 0L) + (endTime - currentStart)
+            }
+            currentPkg = null
+        }
 
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val pkg = event.packageName ?: continue
             when (event.eventType) {
                 UsageEvents.Event.ACTIVITY_RESUMED -> {
-                    foregroundStart[pkg] = event.timeStamp
+                    closeCurrent(event.timeStamp)
+                    currentPkg = pkg
+                    currentStart = event.timeStamp
                     launchCount[pkg] = (launchCount[pkg] ?: 0) + 1
                 }
                 UsageEvents.Event.ACTIVITY_PAUSED -> {
-                    val start = foregroundStart.remove(pkg)
-                    if (start != null && event.timeStamp > start) {
-                        totalDuration[pkg] = (totalDuration[pkg] ?: 0L) + (event.timeStamp - start)
+                    if (pkg == currentPkg) {
+                        closeCurrent(event.timeStamp)
                     }
                 }
             }
         }
-        // 리포트 생성 시점까지 아직 포그라운드에 남아있는 앱은 지금까지의 시간을 더해준다.
-        for ((pkg, start) in foregroundStart) {
-            if (now > start) {
-                totalDuration[pkg] = (totalDuration[pkg] ?: 0L) + (now - start)
-            }
-        }
+        // 리포트 생성 시점에도 여전히 포그라운드인 앱(있다면 단 하나)은 지금까지의 시간을 더해준다.
+        closeCurrent(now)
 
         val pm = context.packageManager
         val selfPackage = context.packageName
@@ -120,9 +138,11 @@ object UsageReportBuilder {
         sb.appendLine("- 실행된 앱 수: ${report.apps.size}개")
         sb.appendLine("- 총 앱 실행(포그라운드 전환) 횟수: ${report.totalLaunchCount}회")
         if (report.apps.isNotEmpty()) {
-            val top = report.apps.first()
-            val pct = percentOf(top.durationMillis, report.totalDurationMillis)
-            sb.appendLine("- 가장 많이 사용한 앱: ${top.label} (${formatDuration(top.durationMillis)}, ${pct}%)")
+            sb.appendLine("- 가장 많이 사용한 앱 TOP ${minOf(5, report.apps.size)}:")
+            report.apps.take(5).forEachIndexed { index, app ->
+                val pct = percentOf(app.durationMillis, report.totalDurationMillis)
+                sb.appendLine("  ${index + 1}. ${app.label} - ${formatDuration(app.durationMillis)} (${pct}%)")
+            }
         } else {
             sb.appendLine("- 오늘 기록된 앱 사용 내역이 없습니다.")
         }
