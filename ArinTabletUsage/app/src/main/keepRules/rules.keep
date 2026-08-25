@@ -1,0 +1,21 @@
+# Add project specific R8 rules here.
+# AGP will combine all keep rule files in src/main/keepRules to pass to R8
+#
+# For more details, see
+#   https://d.android.com/r/tools/r8/keep-rules
+
+# If your project uses WebView with JS, uncomment the following
+# and specify the fully qualified class name to the JavaScript interface
+# class:
+#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
+#   public *;
+#}
+
+# JavaMail(android-mail/android-activation)은 META-INF 설정 파일을 통해 리플렉션으로
+# Provider 구현체를 찾으므로, 최적화가 켜질 경우를 대비해 관련 클래스를 모두 보존한다.
+-keep class javax.mail.** { *; }
+-keep class javax.activation.** { *; }
+-keep class com.sun.mail.** { *; }
+-dontwarn javax.mail.**
+-dontwarn javax.activation.**
+-dontwarn com.sun.mail.**
