@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-24T22:40:00+09:00",
+  "updated_at": "2026-09-14T09:20:00+09:00",
   "filters": [
     {
       "id": "hyundaicard_naver_approval_v1",
@@ -292,6 +292,36 @@
       ],
       "added_at": "2026-08-24T22:40:00+09:00",
       "added_from_ts": 1787290200000
+    },
+    {
+      "id": "shinhancard_8423_cancel_v2",
+      "card_company": "신한카드 8423",
+      "package": "com.shcard.smartpay",
+      "match": {
+        "title_regex": "\\[신한카드\\]",
+        "body_regex": "\\[신한카드\\(8423\\)\\s*취소\\][\\s\\S]*?취소금액:\\s*(?<amount>[0-9,]+)원[\\s\\S]*?가맹점명:\\s*(?<merchant>[^\\r\\n]+)",
+        "type": "cancel"
+      },
+      "examples": [
+        "[신한카드(8423) 취소] 홍*동\n- 취소금액: 160,000원(일시불)\n- 취소일시: 09/13 13:48\n- 가맹점명: 테스트가맹점G\n- 누적금액: 775,666원\n\n[신한카드 1544-7000]"
+      ],
+      "added_at": "2026-09-14T09:20:00+09:00",
+      "added_from_ts": 1789274930202
+    },
+    {
+      "id": "shinhancard_8423_sales_cancel_v1",
+      "card_company": "신한카드 8423",
+      "package": "com.shcard.smartpay",
+      "match": {
+        "title_regex": "\\[신한카드\\]",
+        "body_regex": "신한카드\\s*\\(8423\\)\\s*매출취소[\\s\\S]*?(?<amount>[0-9,]+)원\\s+\\d{2}/\\d{2}\\s+(?<merchant>[^\\r\\n]+)",
+        "type": "cancel"
+      },
+      "examples": [
+        "신한카드 (8423)  매출취소  홍*동        7,000원  08/24 테스트가맹점H\n\n[발신번호 1544-7000]"
+      ],
+      "added_at": "2026-09-14T09:20:00+09:00",
+      "added_from_ts": 1787882683891
     }
   ]
 }

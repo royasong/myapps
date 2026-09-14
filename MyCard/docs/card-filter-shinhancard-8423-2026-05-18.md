@@ -82,3 +82,11 @@ text:  [이마트카드 할인]
 
 `docs/data/신한카드.jsonl` — 5/18 19:41~19:43 com.shcard.smartpay 알림 8건 추가  
 (승인 3건 + 취소 1건 + 이마트할인 3건 + 빈 알림 1건)
+
+---
+
+## 후속
+
+- 2026-09-14: 취소 알림 포맷 2종(`[신한카드(8423) 취소]`, `신한카드 (8423) 매출취소`)이 추가로 발견되어
+  `shinhancard_8423_cancel_v2` / `shinhancard_8423_sales_cancel_v1`을 신규 추가했다.
+  → `docs/card-filter-shinhancard-8423-2026-09-14.md`
