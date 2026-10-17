@@ -28,11 +28,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this app does
 
-Reads the device's SMS inbox, filters this-month `[Web발신]` card-approval messages by user-configured `phone,id[,keyword]` rules, groups them by id, sums approvals minus cancellations, and surfaces the totals in:
-- a Compose Activity UI (`MainActivity`),
+**알림 기반 아키텍처** (commit `1bb9796` 이후). 카드사 앱의 푸시 알림을 `NotificationListenerService`로 수집해 `card_filters.json`의 regex 룰로 금액/가맹점을 파싱하고, Room DB에 적재한 뒤 카드(`card_company`)별로 이번 달 승인액 − 취소액을 합산해 다음에 표시한다:
+- a Compose Activity UI (`MainActivity`) — 월 이동(◀▶), 카드별 월 한도/여유분,
 - a home-screen `AppWidget` (`CardWidgetProvider`).
 
-Permission used: **`READ_SMS` only.** UI strings, comments, and log text are in Korean.
+과거의 SMS/RCS 파싱(`sms/SMSReader.java`)은 **더 이상 집계에 쓰이지 않는다** — `SMSReader.SmsGroup`/`SmsItem` 데이터 클래스만 결과 타입으로 재사용된다. UI strings, comments, and log text are in Korean.
 
 ## Build / run
 
@@ -52,36 +52,63 @@ Toolchain: Kotlin 2.0.21, AGP 8.11.2, Compose Compiler plugin, Compose BOM 2024.
 
 ## Architecture
 
-### Source of truth: `SharedPreferences("mycard_prefs", MODE_PRIVATE)`
+### 데이터 흐름
 
-This single prefs file is shared between Activity, Worker, and Widget. Keys:
-- `cardGroup: String` — newline-separated config, each line `phone,id[,last4]`. `phone` is the SMS sender address (exact match), `id` is the display group label and is also required to appear as a substring in the message body. The optional `last4` is the user's full 4-digit card number tail (e.g., `1111`); it's matched **position-by-position** against the masked card token in the body (e.g., `0*7*` — `*` is a wildcard for any digit). This lets the user split multiple cards from the same sender into per-card filters. Written by `SettingsActivity`, consumed by `SMSReader`.
-- `memo: String` — free-form note in `SettingsActivity`.
-- `widget_total: Long` — last-computed grand total, rendered by the widget.
-- `widget_groups: String` — hand-rolled JSON `[{"id":"X","total":1234},...]` listing per-group totals, rendered by the widget.
+```
+카드사 앱 알림
+  → notif/CardNotificationListener (NotificationListenerService)
+      ├─ RawDumpAll  : 모든 알림 → raw_notifications_all_<YYYY>_<MM>.jsonl (월 단위, 파싱 룰 작성용 원본)
+      ├─ Blacklist   : 해당 pkg면 여기서 중단
+      ├─ Whitelist   : 포함된 pkg만 CardParser.parse()
+      ├─ Room DB     : notifications.db (같은 pkg/title/text/bigText가 5초 내 중복이면 skip)
+      ├─ RawDump     : DB에 들어간 건 → raw_notifications_<YYYY>.jsonl (연 단위, rebuildFromRaw 원본)
+      └─ 파싱 성공 시 SmsReceiver.ACTION_SMS_UPDATED 브로드캐스트 → 열려 있는 UI 갱신
+```
 
-**If you add a new refresh path, it must update both `widget_total` and `widget_groups` AND call `appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.widget_total)`.** There are already 4 near-duplicate copies of this block in `MainActivity.kt` (initial load, `LaunchedEffect(groups)`, top-bar refresh button, and `refreshData()`). Extract a helper before adding a 5th.
+집계는 `notif/NotifCardReader.kt`의 `readNotifCardGroups(context, monthOffset)` 하나로 통일되어 있다 (Activity·Widget·Worker 모두). DB의 `amount IS NOT NULL` 행을 월 범위로 읽어 `filterId → card_company`(없으면 pkg → card_company, 그래도 없으면 pkg)로 그룹핑한다.
+
+### 파일 저장소: `/sdcard/Documents/MyCard/` (`storage/AppStorage`)
+
+`MANAGE_EXTERNAL_STORAGE`(전체 파일 접근)로 **`java.io.File` 직접 읽기/쓰기**. MediaStore를 쓰지 않는다.
+- `card_filters.json` — 파싱 룰 (`CardFilterStore`). **이 파일이 없으면 아무 알림도 파싱되지 않아 메인 리스트가 비어 보인다.**
+- `whitelist.txt` / `blacklist.txt` — 파일이 없을 때만 `Whitelist.DEFAULT_PACKAGES`로 생성. 이후엔 파일이 우선.
+- `raw_notifications_<YYYY>.jsonl`, `raw_notifications_all_<YYYY>_<MM>.jsonl` — 위 흐름 참고. 둘 다 pretty-print JSON 객체를 이어 붙인 형식(한 줄 1객체 아님).
+
+### Shared state: `SharedPreferences("mycard_prefs", MODE_PRIVATE)`
+
+Activity, Worker, Widget이 공유. Keys:
+- `widget_total: Long`, `widget_today_count: Int`, `widget_total_count: Int` — 위젯 표시값.
+- `widget_groups: String` — hand-rolled JSON `[{"id":"X","total":1234},...]`. 위젯이 regex로 파싱.
+- `card_limits: String` — 카드별 월 한도 JSON 맵 (`limit/CardLimitStore`).
+- `memo: String`, `cardGroup: String` — `SettingsActivity`가 저장. `cardGroup`은 SMS 시절 설정(`phone,id[,last4]`)으로, 지금은 `SmsReceiver`의 발신번호 판별과 위젯 그룹 정렬 순서에만 쓰인다.
+
+**If you add a new refresh path, it must update `widget_total`/`widget_groups`(+count 키) and refresh the widget.** 이미 거의 같은 블록이 5곳에 있다 (`MainActivity.kt`의 `LaunchedEffect(shouldRefresh)`·`LaunchedEffect(groups, monthOffset)`, `SmsReceiver.refreshAndNotify`, `CardRefreshWorker`). 새로 추가하기 전에 `SmsReceiver.refreshAndNotify()` 재사용 또는 helper 추출을 먼저 고려.
 
 ### Components
 
 > **SMSReader.java 위치:** `app/src/main/java/com/example/mycard/sms/SMSReader.java` (`sms/` 패키지). 과거에는 `ui/theme/SMSReader.java`였으나 이전 작업에서 의도적으로 옮긴 것이다. **다시 `ui/theme/`로 되돌리지 말 것.** main 브랜치 등 다른 라인에 옛 경로(`ui/theme/SMSReader.java`)를 수정한 commit이 남아 있어 cherry-pick/merge 시 modify/delete 충돌이 날 수 있다. 그런 commit의 SMSReader 변경은 **현재 `sms/SMSReader.java`에 더 정교한 RCS 파싱(`addRcsApprovals` 등)이 이미 있어 대부분 무가치**하므로, 충돌 시 옛 경로 파일을 다시 만들지 말고 `git rm`으로 삭제 측을 선택하면 된다. 의미 있는 동작 변화가 있으면 그것만 발췌해 `sms/SMSReader.java`에 수동 적용.
 
-- `app/src/main/java/com/example/mycard/sms/SMSReader.java` — parsing core. `readCardApprovalGrouped(context)` reads `cardGroup` from prefs and runs **two parallel queries per card line**:
-  1. `content://sms/inbox` — selection `address = phone AND date >= start-of-month AND body LIKE '[Web발신]%'`. Body is whitespace-stripped, `자동결제`/`자동 결제` rewritten to `승인`, then `AMOUNT_PATTERN`(승인) or `CANCEL_AMOUNT_PATTERN`(취소) matched. Cancellations stored as **negative** amounts so per-group totals net out.
-  2. `content://im/chat` — Samsung RCS / GSMA MaaP store, `content_type = application/vnd.gsma.openrichcard.v1.0+json` (`addRcsApprovals`). Body is JSON; `extractRichCardTexts` does DFS over the layout tree collecting `widget == "TextView"` text values, then `findAmountAfterLabel(texts, "금액")` extracts the amount. RCS cards are **always approvals** (취소 RCS 카드 미관측 — 취소는 SMS 경로로만 들어옴). The persisted `body` is reformatted into a single human-readable line (`[Web발신] <카드> 승인 <거래구분> <금액>원 <거래시간> <사용처> 누적 <누적금액>`) so the existing Compose body-rendering code works without changes.
-  - Both paths feed the same `groupMap`. RCS access from this app uses only `READ_SMS` (verified on Samsung Flip via `probeRcsAccess`). See `docs/rcs-investigation-2026-04-27.md`.
-- `MainActivity.kt` — Compose `CardApprovalScreen`. Owns the only refresh path users hit (top-bar refresh + initial load + widget-triggered refresh via `intent.getBooleanExtra("refresh", ...)`). Permission is requested on first composition.
-- `widget/CardWidgetProvider.kt` — `AppWidgetProvider`. Renders `widget_total` and the first 5 entries of `widget_groups` into `res/layout/widget_card.xml`. Custom broadcast action `com.example.mycard.WIDGET_REFRESH` runs `SMSReader` directly from the widget's refresh button, independent of the Activity. Parses `widget_groups` with regex (not Gson).
-- `CardRefreshWorker.kt` — `CoroutineWorker` that runs the same refresh and additionally writes a timestamped `card_approval_yyyyMMdd_HHmmss.txt` to `getExternalFilesDir(null)` and `getExternalFilesDir(DIRECTORY_DOCUMENTS)`. **Not scheduled by anything currently** — `MainActivity.kt` imports `WorkManager` / `PeriodicWorkRequestBuilder` but never enqueues it. Wire from `MainActivity` if needed.
-- `SettingsActivity.kt` — Compose form that persists `cardGroup` and `memo` to `mycard_prefs`. Launched from the `⋮` menu in `MainActivity`.
+- `notif/CardNotificationListener.kt` — 알림 수집 진입점 (위 데이터 흐름).
+- `parser/CardFilterStore.kt` / `parser/CardParser.kt` — 룰 로드(패키지별 인덱스, 읽기 실패 시 캐시하지 않고 다음 호출에 재시도) / 파일 순서대로 첫 매칭 반환.
+- `notif/UpdateAction.kt` — `rebuildFromRaw()`: 필터·화이트/블랙리스트·RawDump 캐시 무효화 → DB `clear()` → `raw_notifications_<YYYY>.jsonl` 전체를 최신 필터로 재파싱. `manually_overridden` 객체는 재파싱하지 않고 저장된 amount/merchant 유지. ⋮ → 업데이트.
+- `MainActivity.kt` — Compose `CardApprovalScreen`. 월 이동, 카드 한도 다이얼로그(`ui/CardLimitDialog`), 알림 접근/전체 파일 접근 권한 스낵바. ⋮ 메뉴: 설정 / 카드 한도 / 알림 로그 / 업데이트 / 항목 추가 / 알림 기반 보기. `onCreate`에서 `CardRefreshWorker`를 **매일 01:00 periodic으로 enqueue**한다.
+- `notif/NotificationBasedCardActivity.kt` — 알림 기반 보기. 항목 수정/삭제 (`RawDump.updateByTs`/`removeByTs` 후 재구성).
+- `notif/NotificationListActivity.kt` — 알림 로그. 화이트리스트 토글, 블랙리스트 추가, 권한/배터리 최적화 배너. `monthRange()`/`monthLabel()`도 여기 정의.
+- `notif/ManualEntryActivity.kt` — 수동 항목 추가 (pkg `com.example.mycard.manual`로 RawDump에 append 후 rebuild).
+- `widget/CardWidgetProvider.kt` — `widget_*` prefs를 읽어 `widget_card.xml`에 최대 5개 그룹 표시. `WIDGET_REFRESH` 브로드캐스트 → `SmsReceiver.refreshAndNotify()`.
+- `CardRefreshWorker.kt` — 같은 갱신 + `card_approval_yyyyMMdd_HHmmss.txt`를 앱 external files dir에 기록.
+- `SmsReceiver.kt` — `SMS_RECEIVED` 시 `cardGroup` 발신번호와 일치하면 2초 뒤 `refreshAndNotify()`. 집계 자체는 알림 DB 기준.
+- `SettingsActivity.kt` — `memo`/`cardGroup` 저장 (memo는 MediaStore `Documents/mycard_memo.txt`에도 기록).
+- `sms/SMSReader.java`, `sms/RcsParser.java` — 구세대 SMS/RCS 파싱. 현재 호출되지 않음 (`docs/rcs-investigation-2026-04-27.md` 참고).
 
 ### Permissions / silent-failure traps
 
-Only `READ_SMS` is declared. `MainActivity` requests it at runtime; **the Widget and Worker assume it's already granted** and will silently produce empty results otherwise. If you add another entry point, request the permission there too or document the assumption.
+- **알림 접근 권한(Notification Listener)** — 집계 전체가 여기에 달려 있다. 꺼지면 에러 없이 새 결제가 그냥 안 쌓인다. `MainActivity`가 스낵바로 안내.
+- **`MANAGE_EXTERNAL_STORAGE`** — 없으면 `card_filters.json` 등을 못 읽어 파싱 0건.
+- `READ_SMS`/`RECEIVE_SMS` — `MainActivity`가 런타임 요청하며, 아직 이 권한 여부로 데이터 로드를 게이트한다 (알림 기반 집계에는 실제로 필요 없음).
 
 ## Quirks to preserve, not "fix"
 
-- `MainActivity.kt:208` uses `getSharedPreferences("l\`", ...)` — a typo prefs name, not `mycard_prefs`. The top-bar refresh-button branch writes to a stray prefs file. Don't fix as a side-effect of unrelated work; only touch when explicitly asked.
 - Korean comments contain `위젷` (typo of `위젯`) repeated across files. Leave it.
 
 ## Conventions
@@ -96,10 +123,10 @@ Only `READ_SMS` is declared. `MainActivity` requests it at runtime; **the Widget
 
 **대화 절차:**
 1. 사용자가 "파싱하자"라고 하면 → "몇 시 알림인가요?"로 시각을 묻는다.
-2. 사용자가 시각(예: "13:10")을 답하면 → `adb pull /sdcard/Documents/MyCard/raw_notifications_all.jsonl`로 받아서 그 시각 ±5분 알림을 추출해 보여준다. ts→KST는 `TZ=Asia/Seoul date -d @<sec> +%H:%M:%S`.
+2. 사용자가 시각(예: "13:10")을 답하면 → `adb pull /sdcard/Documents/MyCard/raw_notifications_all_<YYYY>_<MM>.jsonl`(해당 월 파일)로 받아서 그 시각 ±5분 알림을 추출해 보여준다. ts→KST는 `TZ=Asia/Seoul date -d @<sec> +%H:%M:%S`.
 3. → "어느 카드 알림인가요?" 카드명을 묻는다 (예: "네이버 현대카드"). 카드사 앱과 페이 앱이 섞여 있을 수 있고, 페이 앱은 카드 식별 불가라 룰 대상으로 부적합.
 4. 룰 작성: title/body에서 `(?<amount>...)` `(?<merchant>...)` named group으로 잡는 regex. **반드시 Python으로 결제 매칭 + 같은 패키지 광고 비매칭 둘 다 검증**한 >뒤 사용자에게 보여주고 승인 받기.
-5. 배포(아래 절차) → 사용자에게 "메뉴 3(업데이트) 누르세요" 안내.
+5. 배포(아래 절차) → 사용자에게 "⋮ 메뉴 → 업데이트 누르세요" 안내.
 
 **`card_filters.json` 소스 관리 (git):**
 - 소스 파일은 **`MyCard/config/card_filters.json`** 에서 관리한다. 이 파일이 유일한 원본이다.
@@ -109,14 +136,12 @@ Only `READ_SMS` is declared. `MainActivity` requests it at runtime; **the Widget
   3. 문제 없으면 commit
   4. 아래 배포 절차로 단말에 반영
 
-**`card_filters.json` 배포 절차 (중요 — owner 유지):**
-- `adb push`는 row owner를 `com.android.shell`로 바꾼다. MyCard는 minSdk 34 + scoped storage라 다른 owner의 `application/json` row는 query에서 제외 — 즉 **단순 `adb push`는 작동하지 않는다**.
-- 올바른 흐름:
-  1. row 확인: `adb shell "content query --uri content://media/external/file --projection _id:owner_package_name:_size --where \"_display_name='card_filters.json'\""`
-  2. owner=`com.example.mycard` row가 없으면: 사용자에게 메뉴 3 한 번 눌러달라고 부탁 → `CardFilterStore.load()` 안의 bootstrap이 빈 row를 자기 owner로 생성한다 (`IS_PENDING=0` 명시 필수 — 없으면 Samsung One UI에서 query 시 자기가 만든 row를 다시 못 찾는다).
-  3. row id 확인 후: `adb shell "content write --uri content://media/external_primary/file/<row_id>" < MyCard/config/card_filters.json`. 이 방식은 file 내용만 갱신하고 owner는 유지된다.
-  4. Download/ 등 잘못된 위치로 부수적으로 push된 row가 생겼으면 `content delete --where "_id=<n>"`로 즉시 정리.
-  5. 배포 후 앱에서 **⋮ 메뉴 → 업데이트** → rebuildFromRaw로 기존 알림에 소급 적용.
+**`card_filters.json` 배포 절차:**
+- 앱이 `MANAGE_EXTERNAL_STORAGE` + `java.io.File`로 직접 읽으므로 **단순 `adb push`로 배포된다** (2026-10-17 Fold7에서 확인. 예전 MediaStore owner 유지 / `content write` 절차는 더 이상 필요 없음).
+  1. `MSYS_NO_PATHCONV=1 adb -s <serial> push config/card_filters.json /sdcard/Documents/MyCard/card_filters.json`
+  2. 앱 재시작 후 로그 확인: `CardFilterStore: load: loaded filters=<N>` (캐시가 있으면 `am force-stop com.example.mycard` 후 재실행)
+  3. 앱에서 **⋮ 메뉴 → 업데이트** → rebuildFromRaw로 기존 알림에 소급 적용.
+- 증상 "메인 리스트가 비어 있음" → 가장 먼저 `CardFilterStore: readShared: ... exists=false` 여부 확인. 파일이 없으면 위 절차로 push.
 
 **필터 파일 스키마** (`MyCard/app/src/main/java/com/example/mycard/parser/CardFilter.kt`):
 - `CardFiltersFile { version, updated_at, filters: List<CardFilter> }`
@@ -127,15 +152,14 @@ Only `READ_SMS` is declared. `MainActivity` requests it at runtime; **the Widget
 **디버깅:**
 - 모든 핵심 분기에 로그가 있다 (`CardFilterStore`, `CardParser`, `UpdateAction`, `CardNotifListener`, `RawDump`, `RawDumpAll`).
 - `adb logcat -d --pid=$(adb shell pidof com.example.mycard) -s CardFilterStore CardParser UpdateAction CardNotifListener RawDump RawDumpAll` 한 줄로 전체 흐름 추>적 가능.
-- "재구성 N/실패 N" 결과만 보고 파싱이 안 됐을 때, 가장 자주 빠지는 곳은 `CardFilterStore: ensureFileUri: no row matched`(MediaStore에서 row 못 봄) — 100% owner 격
-리 또는 `IS_PENDING` 문제.
+- "재구성 N/실패 N" 결과만 보고 파싱이 안 됐을 때, 가장 자주 빠지는 곳은 `CardFilterStore: readShared: ... exists=false`(필터 파일 없음) 또는 `canRead=false`(전체 파일 접근 권한 꺼짐).
 
 **Raw data 아카이브 (`docs/data/<카드사>.jsonl`):**
 - 파싱 룰을 새로 만들 때 사용한 알림은 **그대로(전체 raw 객체) `MyCard/docs/data/<카드사>.jsonl`에 한 줄씩 저장**한다. 같은 카드사의 다른 카드(예: 신한 9999/9999) 도 하나의 파일에 누적 append.
 - 목적: ① 룰 회귀 테스트 코퍼스 ② 카드사 알림 포맷 변경 추적 ③ 같은 패키지의 광고/청구서 등 비매칭 케이스도 함께 모아 negative 검증 자료로 사용. 그래서 결제뿐 아니라 광고/공지도 포함해 둘 가치가 있다.
-- 객체 형식은 `raw_notifications_all.jsonl` 내부 객체 그대로 (`pkg/ts/title/text/bigText/subText/category/channelId/rawExtras`). 한 줄 = 한 객체 (pretty-print 금지).
+- 객체 형식은 `raw_notifications_all_<YYYY>_<MM>.jsonl` 내부 객체 그대로 (`pkg/ts/title/text/bigText/subText/category/channelId/rawExtras`). 한 줄 = 한 객체 (pretty-print 금지).
 - 파일명은 카드사 단위 (`신한카드.jsonl`, `현대카드.jsonl`, `삼성카드.jsonl` …). 페이 앱(`com.samsung.android.spay` 등)은 카드 식별이 안 되므로 별도 보관할 가치 없음.
-- 추가 절차: `adb pull /sdcard/Documents/MyCard/raw_notifications_all.jsonl` (필요시 whitelist-only `raw_notifications.jsonl`도) → 해당 패키지 객체만 dedupe (`ts|title|text` 키)해 append. 단말 dump는 multi-line pretty JSON이므로 `JSON.parse`가 아닌 brace-balanced 스캐닝으로 객체 분리.
+- 추가 절차: `adb pull /sdcard/Documents/MyCard/raw_notifications_all_<YYYY>_<MM>.jsonl` (필요시 whitelist-only `raw_notifications_<YYYY>.jsonl`도) → 해당 패키지 객체만 dedupe (`ts|title|text` 키)해 append. 단말 dump는 multi-line pretty JSON이므로 `JSON.parse`가 아닌 brace-balanced 스캐닝으로 객체 분리.
 
 **카드 룰 문서화 (`docs/card-filter-<카드사>-<YYYY-MM-DD>.md`):**
 - 룰을 **신규 추가**하거나 **기존 룰을 수정**할 때마다 반드시 문서를 작성한다.
